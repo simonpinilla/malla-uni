@@ -26,6 +26,14 @@ jobs:
           LOGIN_URL:   ${{ secrets.LOGIN_URL }}
           NOTAS_URL:   ${{ secrets.NOTAS_URL }}
         run: node scraping.js
+      - name: Upload debug LOGIN (si existe)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-login
+          path: debug_login.html
+          if-no-files-found: ignore
+
 
       # --- A) Diff y estado del repo (debug)
       - name: Show repo state
