@@ -7,17 +7,24 @@ const cheerio = require('cheerio');
 const { CookieJar } = require('tough-cookie');
 const { wrapper } = require('axios-cookiejar-support');
 
-// ====== CONFIG via Secrets (Actions) ======
+// ====== CONFIG via Secrets (solo 2 URLs) ======
 const USER = (process.env.PORTAL_USER || '').trim();
 const PASS = (process.env.PORTAL_PASS || '').trim();
 
-const PORTAL_BASE = (process.env.PORTAL_BASE || '').trim();            // ej: https://portal.universidad.cl
-const LOGIN_PATH  = (process.env.LOGIN_PATH  || '').trim();            // ej: /alumnos/login.aspx
-const NOTAS_PATH  = (process.env.NOTAS_PATH  || '').trim();            // ej: /alumnos/concent-notas.asp
+const LOGIN_URL = (process.env.LOGIN_URL || '').trim();   // URL completa de login
+const NOTAS_URL = (process.env.NOTAS_URL || '').trim();   // URL completa de concentración
 
-// si conoces los nombres exactos de los campos del login, ponlos por secrets; si no, el script los detecta
-const LOGIN_USER_FIELD = (process.env.LOGIN_USER_FIELD || '').trim();  // ej: email | rut | usuario
-const LOGIN_PASS_FIELD = (process.env.LOGIN_PASS_FIELD || '').trim();  // ej: password | contrasena
+function requireEnv(name, val){
+  if (!val) { console.error(`[scraper] Falta secret ${name}`); process.exit(1); }
+}
+requireEnv('PORTAL_USER', USER);
+requireEnv('PORTAL_PASS', PASS);
+requireEnv('LOGIN_URL',  LOGIN_URL);
+requireEnv('NOTAS_URL',  NOTAS_URL);
+
+// (opcional) nombres de campos del form; si no los defines, los detecta solo
+const LOGIN_USER_FIELD = (process.env.LOGIN_USER_FIELD || '').trim();
+const LOGIN_PASS_FIELD = (process.env.LOGIN_PASS_FIELD || '').trim();
 
 // Validaciones duras (fallar con mensaje claro)
 function requireEnv(name, val){
