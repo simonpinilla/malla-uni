@@ -135,42 +135,87 @@ function tryExtractEmbeddedJSON(html){
 function parseNotasFromTable(html){
   const $ = cheerio.load(html);
 
-  // ⚠️ AJUSTA este selector a tu tabla real
-  const rows = $('table#notas tbody tr, table.concentracion tbody tr, table tbody tr');
+  // Normaliza texto (quita tildes/espacios múltiples)
+  const norm = (s)=> String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+                    .replace(/\s+/g,' ').trim().toLowerCase();
+
+  // Encuentra la "mejor" tabla: la que tenga headers compatibles
+  const tables = $('table');
+  let best = null, bestScore = -1;
+
+  tables.each((_, tbl)=>{
+    const $tbl = $(tbl);
+    const headers = $tbl.find('thead th, tr:first th, tr:first td').map((i,el)=>norm($(el).text())).get();
+    if (!headers.length) return;
+
+    const wanted = ['codigo','cod','asignatura','ramo','curso','seccion','asistencia','examen','final','estado','periodo','anio','año'];
+    const score = headers.reduce((acc,h)=> acc + (wanted.some(w=>h.includes(w))?1:0), 0);
+
+    if (score > bestScore) { best = $tbl; bestScore = score; }
+  });
+
+  if (!best) return [];
+
+  // Mapea índices de columnas por nombre
+  const headCells = best.find('thead tr:first th, tr:first th, thead tr:first td, tr:first td').map((i,el)=>norm($(el).text())).get();
+  const idxOf = (names)=> {
+    let idx = -1;
+    names.some(n=>{
+      const i = headCells.findIndex(h=> h.includes(n));
+      if (i !== -1) { idx = i; return true; }
+      return false;
+    });
+    return idx;
+  };
+
+  const idx = {
+    codigo:   idxOf(['codigo','cod']),
+    nombre:   idxOf(['asignatura','ramo','curso','nombre']),
+    seccion:  idxOf(['seccion','sec']),
+    asistencia: idxOf(['asistencia','asis']),
+    examen:   idxOf(['examen','exa']),
+    final:    idxOf(['final','nf','nota final']),
+    estado:   idxOf(['estado','resultado']),
+    periodo:  idxOf(['periodo','semestre','anio','año','year'])
+  };
+
+  // Índices de certámenes/labs: busca c1..c4, l1..l4
+  const cIdx = []; const lIdx = [];
+  headCells.forEach((h,i)=>{
+    if (/^c\s*\d+|certamen\s*\d+|pp\s*\d+$/i.test(h.replace(/\s+/g,''))) cIdx.push(i);
+    if (/^l\s*\d+|lab\s*\d+$/i.test(h.replace(/\s+/g,''))) lIdx.push(i);
+  });
+
+  const rows = best.find('tbody tr').length ? best.find('tbody tr') : best.find('tr').slice(1);
   const out = [];
 
   rows.each((_, tr)=>{
-    const tds = $(tr).find('td').map((i,td)=>$(td).text().trim()).get();
+    const tds = $(tr).find('td');
     if (!tds.length) return;
 
-    // ⚠️ AJUSTA los índices a tu estructura
-    const codigo       = tds[0] || '';
-    const nombre       = tds[1] || '';
-    const seccion      = tds[2] || 'Teórico';
-    const asistencia   = tds[3] || '';
-    const certamenes   = [tds[4], tds[5], tds[6], tds[7]].map(toNum).filter(x=>x!=='');
-    const laboratorios = [tds[8], tds[9], tds[10], tds[11]].map(toNum).filter(x=>x!=='');
-    const notaExamen   = toNum(tds[12]);
-    const notaFinal    = toNum(tds[13]);
-    const estado       = tds[14] || '';
-    const periodoTxt   = tds[15] || '';
+    const cell = (i)=> safeTrim($(tds[i]||{}).text());
+
+    const certamenes = cIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number);
+    const laboratorios = lIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number);
 
     out.push({
-      codigo,
-      nombre,
-      seccion,
-      asistencia,
+      codigo:    idx.codigo   >=0 ? cell(idx.codigo) : '',
+      nombre:    idx.nombre   >=0 ? cell(idx.nombre) : '',
+      seccion:   idx.seccion  >=0 ? cell(idx.seccion) : 'Teórico',
+      asistencia:idx.asistencia>=0 ? cell(idx.asistencia) : '',
       certamenes,
       laboratorios,
-      notaExamen,
-      notaFinal,
-      estado,
-      periodo: yearFromText(periodoTxt)
+      notaExamen:idx.examen   >=0 ? (toNum(cell(idx.examen)) || '') : '',
+      notaFinal: idx.final    >=0 ? (toNum(cell(idx.final))  || '') : '',
+      estado:    idx.estado   >=0 ? cell(idx.estado) : '',
+      periodo:   idx.periodo  >=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear()
     });
   });
 
-  return out;
+  // Filtra filas vacías (sin código y sin nombre)
+  return out.filter(r => r.codigo || r.nombre);
 }
+
 
 function normalizeFromEmbedded(data){
   const arr = Array.isArray(data) ? data : (Array.isArray(data.ramos) ? data.ramos : []);
@@ -231,6 +276,10 @@ async function run(){
 
 // Run
 run().catch(err=>{
-  console.error('[scraper] ERROR:', err && err.stack || err);
-  process.exit(1);
+  if (!Array.isArray(list) || list.length === 0) {
+  // volcado de la página para debug
+  const debugPath = path.join(process.cwd(), 'debug_notas.html');
+  fs.writeFileSync(debugPath, html, 'utf8');
+  throw new Error('No se pudo extraer información de notas. Se guardó debug_notas.html para revisar la estructura.');
+}
 });
