@@ -271,7 +271,7 @@ async function run(){
 }
 
 // Run
-aasync function run(){
+async function run(){
   console.log('[scraper] Iniciando login…');
   await login();
   await sleep(300);
