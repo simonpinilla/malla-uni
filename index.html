@@ -1,1 +1,440 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Malla Universitaria – Demo</title>
+  <style>
+    :root{
+      --bg:#0b1020; --card:#121939; --muted:#7d88b2; --text:#e6e9f7; --brand:#6aa9ff;
+      --ok:#1db954; --warn:#f2b705; --bad:#ff5b5b; --chip:#1b2558; --grid-gap:14px;
+      --radius:18px; --shadow:0 10px 30px rgba(0,0,0,.35);
+    }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,'Helvetica Neue',Arial;
+      color:var(--text); background:radial-gradient(90% 60% at 0% 0%,#10183c,transparent),
+                         radial-gradient(80% 50% at 100% 0%,#16204a,transparent),var(--bg);}
+    a{color:inherit}
+    .app{display:grid;grid-template-rows:auto 1fr}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;
+      padding:14px 18px;border-bottom:1px solid #253062;background:rgba(18,25,57,.7);
+      backdrop-filter:saturate(140%) blur(8px); position:sticky; top:0; z-index:3;}
+    .logo{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.3px}
+    .logo .dot{width:12px;height:12px;border-radius:50%;background:var(--brand);box-shadow:0 0 20px #6aa9ff80}
+    .user-badge{display:flex;align-items:center;gap:12px}
+    .user-badge .avatar{width:34px;height:34px;border-radius:50%;
+      background:linear-gradient(135deg,#6aa9ff,#7cf2ff)}
+    .button, button{background:var(--brand);color:#081024;font-weight:600;border:0;
+      padding:10px 14px;border-radius:12px;cursor:pointer;box-shadow:var(--shadow);
+      transition:transform .06s ease, filter .2s ease}
+    .button:active, button:active{transform:translateY(1px)}
+    .content{display:grid;grid-template-columns:300px 1fr;gap:var(--grid-gap);padding:18px}
+    @media (max-width: 1000px){.content{grid-template-columns:1fr}}
+    .panel{background:linear-gradient(180deg,#0e1533 0%, #0b1130 60%);
+      border:1px solid #1f2a5a; border-radius:var(--radius); padding:18px; box-shadow:var(--shadow);
+      position:sticky; top:72px; height:fit-content;}
+    .panel h3{margin:0 0 10px; font-size:15px; color:#bfd0ff; letter-spacing:.4px}
+    .panel .group{margin-bottom:16px}
+    .chip{display:inline-flex;align-items:center;gap:8px; padding:8px 10px; margin:6px 6px 0 0;
+      background:var(--chip); border:1px solid #2a3772; border-radius:999px; font-size:12px; cursor:pointer}
+    .chip input{accent-color:var(--brand)}
+    .search{display:flex; gap:8px}
+    .search input{flex:1; padding:10px 12px; border-radius:12px; border:1px solid #2a3772;
+      background:#0f1736; color:var(--text)}
+    .grid{display:grid; grid-template-columns:repeat(6, minmax(220px,1fr)); gap:var(--grid-gap)}
+    @media (max-width:1400px){.grid{grid-template-columns:repeat(4,minmax(220px,1fr))}}
+    @media (max-width:900px){.grid{grid-template-columns:repeat(2,minmax(220px,1fr))}}
+    @media (max-width:560px){.grid{grid-template-columns:1fr}}
+    .term-col{display:flex;flex-direction:column;gap:var(--grid-gap)}
+    .term-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+      padding:10px 12px;border-radius:14px;background:linear-gradient(180deg,#111a42,#0f1638);
+      border:1px solid #263168}
+    .term-head small{color:var(--muted)}
+    .course{position:relative; padding:14px; border-radius:16px; background:var(--card);
+      border:1px solid #253062; box-shadow:var(--shadow); display:flex; flex-direction:column; gap:10px}
+    .course:hover{border-color:#3551a3}
+    .course .title{font-weight:700; line-height:1.2}
+    .meta{display:flex; flex-wrap:wrap; gap:6px}
+    .meta .tag{font-size:11px; background:#0f1736; padding:4px 8px; border:1px solid #2a3772; border-radius:999px; color:#bfd0ff}
+    .status{display:flex; align-items:center; gap:8px}
+    .pill{font-size:11px;padding:4px 8px;border-radius:999px;font-weight:700; letter-spacing:.2px}
+    .pill.ok{background:color-mix(in oklab, var(--ok) 20%, transparent); color:#a0ffbf; border:1px solid #1d7f48}
+    .pill.warn{background:color-mix(in oklab, var(--warn) 25%, transparent); color:#ffe6a9; border:1px solid #a47b06}
+    .pill.bad{background:color-mix(in oklab, var(--bad) 25%, transparent); color:#ffd0d0; border:1px solid #b23b3b}
+    .progress{height:8px; border-radius:999px; background:#0e1330; border:1px solid #243064; overflow:hidden}
+    .progress > span{display:block; height:100%; width:0}
+    .progress .pp{background:linear-gradient(90deg,#5ea8ff,#76d1ff)}
+    .actions{display:flex; gap:8px; margin-top:auto}
+    .ghost{background:#0f1736; color:#c9d6ff; border:1px solid #2a3772}
+    .login-wrap{min-height:100dvh; display:grid; place-items:center; padding:18px}
+    .login{width:min(460px, 92vw); background:linear-gradient(180deg,#0e1433,#0a112f);
+      border:1px solid #253062; border-radius:22px; padding:22px; box-shadow:var(--shadow)}
+    .login h1{margin:.2rem 0 1rem}
+    .field{display:flex; flex-direction:column; gap:6px; margin:10px 0}
+    .field input{padding:12px 14px; border-radius:12px; border:1px solid #2a3772; background:#0f1736; color:var(--text)}
+    .help{color:#b9c6ff; font-size:12px}
+    .error{color:#ffd0d0; background:#2b0f19; border:1px solid #6b2639; padding:8px 10px; border-radius:10px; display:none}
+    dialog{border:0; border-radius:20px; padding:0; width:min(800px, 96vw); background:#0e1536; color:var(--text)}
+    dialog::backdrop{background:rgba(4,8,24,.6); backdrop-filter:blur(3px)}
+    .modal{padding:18px}
+    .modal header{display:flex; align-items:center; justify-content:space-between; gap:10px; border-bottom:1px solid #263168; padding-bottom:10px}
+    .modal h3{margin:0}
+    table{width:100%; border-collapse:collapse; margin-top:12px}
+    th,td{border-bottom:1px solid #253062; text-align:left; padding:10px}
+    tr:hover td{background:#0f1736}
+    .sr{position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0}
+  </style>
+</head>
+<body>
+  <div id="app" class="app" hidden>
+    <div class="topbar">
+      <div class="logo" aria-label="Universidad Demo">
+        <span class="dot" aria-hidden="true"></span>
+        <span>Malla Universitaria</span>
+      </div>
+      <div class="user-badge">
+        <div id="studentName">—</div>
+        <div class="avatar" aria-hidden="true"></div>
+        <button id="logoutBtn" class="ghost">Salir</button>
+      </div>
+    </div>
+
+    <div class="content">
+      <aside class="panel" aria-label="Filtros y búsqueda">
+        <div class="group">
+          <h3>Buscar ramo</h3>
+          <div class="search">
+            <input id="q" type="search" placeholder="Nombre o código…" autocomplete="off" />
+            <button class="ghost" id="clearSearch" title="Limpiar">✕</button>
+          </div>
+        </div>
+        <div class="group">
+          <h3>Estado</h3>
+          <label class="chip"><input type="checkbox" class="flt-status" value="APROBADO" checked> Aprobado</label>
+          <label class="chip"><input type="checkbox" class="flt-status" value="REPROBADO" checked> Reprobado</label>
+          <label class="chip"><input type="checkbox" class="flt-status" value="CURSANDO" checked> Cursando</label>
+        </div>
+        <div class="group">
+          <h3>Año</h3>
+          <div id="yearChips"></div>
+        </div>
+        <div class="group">
+          <h3>Acciones</h3>
+          <button id="exportJson" class="ghost">Exportar JSON</button>
+        </div>
+        <p class="help">Demo local. Si existe <code>notas.json</code>, se usarán tus datos reales.</p>
+      </aside>
+
+      <main id="grid" aria-live="polite"></main>
+    </div>
+  </div>
+
+  <!-- Login -->
+  <div id="loginScreen" class="login-wrap">
+    <form id="loginForm" class="login" aria-labelledby="lg-title" autocomplete="on">
+      <span class="pill warn">Portal Universidad · DEMO</span>
+      <h1 id="lg-title">Inicia sesión</h1>
+      <p class="help">Usa <b>demo@uni.cl</b> y <b>1234</b> para ingresar en esta demo.</p>
+      <div role="alert" id="loginError" class="error">Credenciales inválidas.</div>
+      <div class="field">
+        <label for="user">Correo o RUT</label>
+        <input id="user" name="user" type="text" placeholder="usuario@uni.cl" required/>
+      </div>
+      <div class="field">
+        <label for="pass">Contraseña</label>
+        <input id="pass" name="pass" type="password" placeholder="••••" required/>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center; justify-content:space-between; margin-top:6px">
+        <label class="chip"><input type="checkbox" id="remember"> Mantener sesión</label>
+        <button type="submit" class="button">Entrar</button>
+      </div>
+    </form>
+  </div>
+
+  <dialog id="courseDlg" aria-label="Detalle de notas">
+    <div class="modal">
+      <header>
+        <h3 id="dlgTitle">Detalle</h3>
+        <button id="closeDlg" class="ghost">Cerrar</button>
+      </header>
+      <div id="dlgBody"></div>
+    </div>
+  </dialog>
+
+<script>
+/************  Demo embebido (fallback)  ************/
+const demoAccount = { user: 'demo@uni.cl', pass: '1234', name: 'Simón Pinilla' };
+const demoStudent = {
+  id: '20250001', name: 'Simón Pinilla', career: 'Tecnología Médica',
+  institution: 'Universidad Demo', plan: '2025',
+  terms: [{
+    year: 2025, period: 1, courses: [
+      { code:'TECM-2402', name:'Introducción a la Tecnología Médica', section:'Teórico', attendance:92,
+        weights:{ pp:80, lab:0, exam:20 },
+        grades:{ pp1:4.2, pp2:6.1, pp3:5.1, pp4:6.4, exam:4.4 }, final:5.0, status:'APROBADO' },
+      { code:'TECM-2401', name:'Biomatemáticas I', section:'Teórico', attendance:88,
+        weights:{ pp:80, lab:0, exam:20 },
+        grades:{ pp1:2.8, pp2:6.1, pp3:6.0, pp4:6.0, exam:5.5 }, final:5.5, status:'APROBADO' }
+    ]
+  },{
+    year: 2025, period: 2, courses: [
+      { code:'TECM-2403', name:'Biomatemáticas II', section:'Teórico', attendance:0,
+        weights:{ pp:80, lab:0, exam:20 }, grades:{}, final:0, status:'CURSANDO' }
+    ]
+  }]
+};
+
+/************  API: primero intenta ./notas.json  ************/
+const api = {
+  login: async (user, pass) => {
+    await delay(350);
+    if (user === demoAccount.user && pass === demoAccount.pass) {
+      return { ok:true, token: btoa(user+':token'), name: demoAccount.name };
+    }
+    return { ok:false, error: 'Credenciales inválidas' };
+  },
+  fetchStudent: async (token) => {
+    try{
+      const res = await fetch('./notas.json', { cache:'no-store' });
+      if(res.ok){
+        const arr = await res.json();                  // tu formato (array de ramos)
+        const mapped = mapNotasArrayToStudent(arr);    // adapto al front
+        const help = document.querySelector('.help');
+        if(help) help.innerHTML = 'Datos cargados desde <b>notas.json</b> (formato real).';
+        return mapped;
+      }
+    }catch(e){ /* si no está, cae al demo */ }
+    return demoStudent;
+  }
+};
+
+/************  Adaptador: tu JSON -> formato de malla  ************/
+function mapNotasArrayToStudent(arr){
+  const byYear = new Map();
+  for (const r of arr) {
+    const y = Number(r.periodo) || new Date().getFullYear();
+    if(!byYear.has(y)) byYear.set(y, []);
+    byYear.get(y).push(r);
+  }
+  const terms = [];
+  [...byYear.keys()].sort((a,b)=>a-b).forEach(year=>{
+    const courses = byYear.get(year).map(raw=>{
+      const hasLabs = Array.isArray(raw.laboratorios) && raw.laboratorios.length>0 && String(raw.promedioLaboratorios||'')!=='';
+      const hasExam = String(raw.notaExamen||'')!=='' && raw.notaExamen!=='0.0';
+      let wPP=100, wLab=0, wEx=0;
+      if (hasLabs && hasExam){ wPP=60; wLab=20; wEx=20; }
+      else if (hasLabs){ wPP=80; wLab=20; }
+      else if (hasExam){ wPP=80; wEx=20; }
+      const grades = {};
+      (raw.certamenes||[]).slice(0,4).forEach((v,i)=>{ const n=parseFloat(v); if(!isNaN(n)) grades['pp'+(i+1)]=n; });
+      (raw.laboratorios||[]).slice(0,4).forEach((v,i)=>{ const n=parseFloat(v); if(!isNaN(n)) grades['lab'+(i+1)]=n; });
+      const ex = parseFloat(raw.notaExamen); if(!isNaN(ex)) grades.exam = ex;
+      const final = (raw.notaFinal!=='' && !isNaN(parseFloat(raw.notaFinal))) ? parseFloat(raw.notaFinal) : 0;
+      const status = String(raw.estado||'').toUpperCase().includes('APROBADO')
+        ? 'APROBADO' : (final>0 ? (final>=4.0?'APROBADO':'REPROBADO') : 'CURSANDO');
+      return {
+        code: raw.codigo,
+        name: (raw.nombre||'').toLowerCase().replace(/\b(\p{L}+)/gu, w=>w[0].toUpperCase()+w.slice(1)),
+        section: (raw.seccion||'Teórico').replace('Téorico','Teórico'),
+        attendance: Number(raw.asistencia)||0,
+        weights: { pp:wPP, lab:wLab, exam:wEx },
+        grades, final, status
+      };
+    });
+    terms.push({ year, period: 1, courses });
+  });
+  return { id:'me', name:'Simón Pinilla', career:'Tecnología Médica', institution:'Portal Real', plan:String(terms[0]?.year||''), terms };
+}
+
+/************  Estado/Store & UI  ************/
+const store = { token:null, student:null, filters:{ years:new Set(), status:new Set(['APROBADO','REPROBADO','CURSANDO']), q:'' } };
+const appEl = document.getElementById('app');
+const gridEl = document.getElementById('grid');
+const courseDlg = document.getElementById('courseDlg');
+const dlgTitle = document.getElementById('dlgTitle');
+const dlgBody = document.getElementById('dlgBody');
+function qs(sel, root=document){ return root.querySelector(sel); }
+function qsa(sel, root=document){ return [...root.querySelectorAll(sel)]; }
+const delay = (ms)=>new Promise(r=>setTimeout(r,ms));
+
+function init(){
+  const saved = localStorage.getItem('demo.token');
+  if(saved){ store.token=saved; openApp(); }
+}
+async function openApp(){
+  try{
+    const student = await api.fetchStudent(store.token);
+    store.student = student;
+    const years = [...new Set(student.terms.map(t=>t.year))];
+    const yearWrap = document.getElementById('yearChips'); yearWrap.innerHTML = '';
+    years.forEach(y=>{
+      const label = document.createElement('label');
+      label.className='chip';
+      label.innerHTML = `<input type="checkbox" class="flt-year" value="${y}" checked> ${y}`;
+      yearWrap.appendChild(label);
+      store.filters.years.add(y);
+    });
+    document.getElementById('studentName').textContent = `${student.name} · ${student.career}`;
+    renderGrid();
+    document.getElementById('loginScreen').hidden = true;
+    appEl.hidden = false;
+  }catch(err){ console.error(err); alert('No se pudo cargar la información.'); }
+}
+function renderGrid(){
+  const {terms} = store.student;
+  const filteredTerms = terms.map(term=>({
+    ...term,
+    courses: term.courses.filter(c=>{
+      const matchStatus = store.filters.status.has(c.status);
+      const matchYear = store.filters.years.has(term.year);
+      const q = store.filters.q.toLowerCase();
+      const matchQ = !q || c.name.toLowerCase().includes(q) || c.code.toLowerCase().includes(q);
+      return matchStatus && matchYear && matchQ;
+    })
+  })).filter(t=>t.courses.length>0);
+  gridEl.innerHTML = '';
+  gridEl.className = 'grid';
+  filteredTerms.sort((a,b)=>a.year-b.year || a.period-b.period).forEach(term=>{
+    const col = document.createElement('section');
+    col.className = 'term-col';
+    col.innerHTML = `
+      <div class="term-head">
+        <div><strong>Año ${term.year}</strong> <small>Periodo ${term.period}</small></div>
+        <small>${term.courses.length} ramos</small>
+      </div>`;
+    term.courses.forEach(c=> col.appendChild(courseCard(term, c)) );
+    gridEl.appendChild(col);
+  });
+}
+function courseCard(term, c){
+  const card = document.createElement('article');
+  card.className = 'course';
+  const statusClass = c.status === 'APROBADO' ? 'ok' : (c.status === 'REPROBADO' ? 'bad' : 'warn');
+  const progress = ppProgress(c);
+  card.innerHTML = `
+    <div class="title">${c.name}</div>
+    <div class="meta">
+      <span class="tag">${c.code}</span>
+      <span class="tag">${c.section}</span>
+      <span class="tag">Asistencia ${c.attendance ?? 0}%</span>
+    </div>
+    <div class="status">
+      <span class="pill ${statusClass}">${c.status}</span>
+      <span style="margin-left:auto">Final: <b>${formatGrade(c.final)}</b></span>
+    </div>
+    <div class="progress" title="Progreso con PP (certámenes)">
+      <span class="pp" style="width:${progress}%"></span>
+    </div>
+    <div class="actions">
+      <button class="ghost" data-action="detail">Ver detalle</button>
+      <button class="button" data-action="predict">Simular nota</button>
+    </div>`;
+  card.querySelector('[data-action="detail"]').addEventListener('click', ()=>openCourse(term, c));
+  card.querySelector('[data-action="predict"]').addEventListener('click', ()=>simulate(c, card));
+  return card;
+}
+function ppProgress(c){
+  const keys = Object.keys(c.grades).filter(k=>k.startsWith('pp'));
+  const count = keys.filter(k=>typeof c.grades[k]==='number' && c.grades[k]>0).length;
+  return Math.min(100, Math.round((count/4)*100));
+}
+function formatGrade(n){ if(!n && n!==0) return '—'; return Number(n).toFixed(1); }
+function openCourse(term, c){
+  dlgTitle.textContent = `${c.code} · ${c.name}`;
+  const {grades, weights} = c;
+  const pp = ['pp1','pp2','pp3','pp4'].map(k=>grades[k] ?? 0);
+  const labs = ['lab1','lab2','lab3','lab4'].map(k=>grades[k] ?? 0);
+  const exam = grades.exam ?? 0;
+  const ppProm = avg(pp.filter(v=>v>0));
+  const labProm = avg(labs.filter(v=>v>0));
+  const calc = calcFinal(c);
+  const rows = [];
+  rows.push(`<tr><th>Ponderaciones</th><td colspan="3">PP ${weights.pp||0}% · LAB ${weights.lab||0}% · EX ${weights.exam||0}%</td></tr>`);
+  rows.push(`<tr><th>PP</th><td>${pp.map(formatGrade).join(' · ')}</td><td>Prom: <b>${formatGrade(ppProm)}</b></td><td>${weights.pp||0}%</td></tr>`);
+  if((weights.lab||0)>0){ rows.push(`<tr><th>LAB</th><td>${labs.map(formatGrade).join(' · ')}</td><td>Prom: <b>${formatGrade(labProm)}</b></td><td>${weights.lab}%</td></tr>`); }
+  if((weights.exam||0)>0){ rows.push(`<tr><th>EXAMEN</th><td>${formatGrade(exam)}</td><td>—</td><td>${weights.exam}%</td></tr>`); }
+  rows.push(`<tr><th>Asistencia</th><td>${c.attendance ?? 0}%</td><td colspan="2">${c.attendance>=75?'Cumple 75%':'Bajo 75%'}</td></tr>`);
+  rows.push(`<tr><th>Resultado</th><td>Final calculado</td><td><b>${formatGrade(calc.final)}</b></td><td>Estado: <b>${calc.status}</b></td></tr>`);
+  dlgBody.innerHTML = `<table><tbody>${rows.join('')}</tbody></table>`;
+  courseDlg.showModal();
+}
+function calcFinal(c){
+  const w = c.weights || {pp:100, lab:0, exam:0};
+  const g = c.grades || {};
+  const pp = avg(['pp1','pp2','pp3','pp4'].map(k=>g[k]).filter(v=>isFinite(v)));
+  const lab = avg(['lab1','lab2','lab3','lab4'].map(k=>g[k]).filter(v=>isFinite(v)));
+  const ex = isFinite(g.exam) ? g.exam : 0;
+  const final = round1(((pp||0)*(w.pp||0) + (lab||0)*(w.lab||0) + ex*(w.exam||0)) / 100);
+  const status = (final>=4.0) ? 'APROBADO' : 'REPROBADO';
+  return {final, status};
+}
+const round1 = (n)=> Math.round(n*10)/10;
+const avg = (arr)=> arr.length? arr.reduce((a,b)=>a+b,0)/arr.length : 0;
+function simulate(c, host){
+  const box = document.createElement('div');
+  box.style.cssText = 'margin-top:8px;border:1px solid #2a3772;background:#0f1736;padding:10px;border-radius:12px';
+  const g = {...c.grades}; const w = c.weights;
+  const input = (label,key)=>`<label style="display:flex;gap:8px;align-items:center;margin:4px 0">${label}<input style="margin-left:auto;max-width:80px" type="number" step="0.1" min="1" max="7" value="${g[key]??''}" data-k="${key}"></label>`;
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;justify-content:space-between"><b>Simular</b>
+      <button class="ghost" data-x>✕</button>
+    </div>
+    ${['pp1','pp2','pp3','pp4'].map((k,i)=>input('PP'+(i+1),k)).join('')}
+    ${(w.lab>0)? ['lab1','lab2','lab3','lab4'].map((k,i)=>input('LAB'+(i+1),k)).join(''):''}
+    ${(w.exam>0)? input('Examen','exam'):''}
+    <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;margin-top:8px">
+      <span id="predRes">Final: —</span>
+      <button class="button" data-run>Calcular</button>
+    </div>`;
+  host.appendChild(box);
+  const close=()=>box.remove(); box.querySelector('[data-x]').onclick = close;
+  box.querySelector('[data-run]').onclick = ()=>{
+    qsa('input',box).forEach(i=>{ if(i.value) g[i.dataset.k]=Number(i.value); });
+    const tmp = {...c, grades:g}; const r = calcFinal(tmp);
+    box.querySelector('#predRes').innerHTML = `Final: <b>${formatGrade(r.final)}</b> · <b>${r.status}</b>`;
+  };
+}
+/************  Eventos  ************/
+qs('#closeDlg').addEventListener('click', ()=>courseDlg.close());
+qs('#logoutBtn').addEventListener('click', ()=>{ localStorage.removeItem('demo.token'); location.reload(); });
+qs('#exportJson').addEventListener('click', ()=>{
+  const data = JSON.stringify(store.student, null, 2);
+  const blob = new Blob([data], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = `notas_${store.student.id}.json`;
+  a.click(); URL.revokeObjectURL(url);
+});
+qs('#clearSearch').addEventListener('click', ()=>{ qs('#q').value=''; store.filters.q=''; renderGrid(); });
+qs('#q').addEventListener('input', (e)=>{ store.filters.q = e.target.value; renderGrid(); });
+document.addEventListener('change', (e)=>{
+  if(e.target.matches('.flt-status')){
+    e.target.checked ? store.filters.status.add(e.target.value) : store.filters.status.delete(e.target.value);
+    renderGrid();
+  }
+  if(e.target.matches('.flt-year')){
+    const y = Number(e.target.value);
+    e.target.checked ? store.filters.years.add(y) : store.filters.years.delete(y);
+    renderGrid();
+  }
+});
+// Login flow
+const loginForm = document.getElementById('loginForm');
+loginForm.addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const user = e.target.user.value.trim();
+  const pass = e.target.pass.value.trim();
+  qs('#loginError').style.display='none';
+  const btn = loginForm.querySelector('button[type="submit"]');
+  const old = btn.textContent; btn.textContent='Ingresando…'; btn.disabled=true;
+  const res = await api.login(user, pass);
+  btn.textContent=old; btn.disabled=false;
+  if(!res.ok){ qs('#loginError').style.display='block'; return; }
+  store.token = res.token;
+  if(qs('#remember').checked) localStorage.setItem('demo.token', res.token);
+  openApp();
+});
+init();
+</script>
+</body>
+</html>
 
