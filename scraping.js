@@ -50,7 +50,7 @@ async function login(){
   if (!$form.length) $form = $('form').first();
   if (!$form.length) throw new Error('No se encontró <form> de login');
 
-  let action = $form.attr('action') || LOGIN_URL;
+  const action = $form.attr('action') || LOGIN_URL;
   const postUrl = new URL(action, LOGIN_URL).toString();
 
   const payload = new URLSearchParams();
@@ -61,7 +61,6 @@ async function login(){
     if (name && type === 'hidden') payload.set(name, val);
   });
 
-  // nombres de campos (usa secrets si los definiste; si no, autodetección)
   let userField = (process.env.LOGIN_USER_FIELD || '').trim();
   let passField = (process.env.LOGIN_PASS_FIELD || '').trim();
   if (!userField || !passField) {
@@ -86,7 +85,9 @@ async function login(){
   });
   console.log(`[scraper] POST login status: ${resPost.status}`);
 
-  // ⚠️ MUY IMPORTANTE: visitar la HOME para fijar la sesión
+  // ⛔️ ¡NO HAGAS PROBE A NOTAS AQUÍ!
+  // ✅ VISITA LA HOME PARA FIJAR SESIÓN
+  const HOME_URL = (process.env.HOME_URL || new URL('/SituActual.asp', LOGIN_URL).toString()).trim();
   const home = await http.get(HOME_URL, { validateStatus: ()=>true });
   console.log('[scraper] GET home:', HOME_URL, 'status:', home.status);
 }
