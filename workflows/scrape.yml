@@ -1,0 +1,28 @@
+name: Refresh notas.json
+on:
+  schedule:
+    - cron: '0 5 * * *'   # todos los días 05:00 UTC (01:00 Chile aprox según horario)
+  workflow_dispatch:      # ejecutar manualmente cuando quieras
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci || npm i
+      - name: Run scraper
+        env:
+          PORTAL_USER: ${{ secrets.PORTAL_USER }}
+          PORTAL_PASS: ${{ secrets.PORTAL_PASS }}
+        run: node scraping.js
+      - name: Commit notas.json
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add notas.json
+          git commit -m "chore: refresh notas.json [skip ci]" || echo "Sin cambios"
+          git push
