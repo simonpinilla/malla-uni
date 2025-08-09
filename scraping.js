@@ -275,11 +275,48 @@ async function run(){
 }
 
 // Run
-run().catch(err=>{
+async function run(){
+  console.log('[scraper] Iniciando login…');
+  await login();
+  await sleep(300);
+
+  console.log('[scraper] Descargando página de notas…');
+  const html = await fetchNotasHTML();
+
+  console.log('[scraper] Parseando tabla HTML…');
+  let list = [];                    // <-- ¡asegúrate de tener esta línea!
+
+  const embedded = tryExtractEmbeddedJSON(html);
+  if (embedded) {
+    console.log('[scraper] JSON embebido detectado. Normalizando…');
+    list = normalizeFromEmbedded(embedded);
+  } else {
+    list = parseNotasFromTable(html);
+  }
+
   if (!Array.isArray(list) || list.length === 0) {
-  // volcado de la página para debug
-  const debugPath = path.join(process.cwd(), 'debug_notas.html');
-  fs.writeFileSync(debugPath, html, 'utf8');
-  throw new Error('No se pudo extraer información de notas. Se guardó debug_notas.html para revisar la estructura.');
+    // volcado de la página para debug
+    const debugPath = path.join(process.cwd(), 'debug_notas.html');
+    fs.writeFileSync(debugPath, html, 'utf8');
+    throw new Error('No se pudo extraer información de notas. Se guardó debug_notas.html para revisar la estructura.');
+  }
+
+  // Limpieza de tipos
+  list = list.map(it=>({
+    codigo: it.codigo,
+    nombre: it.nombre,
+    seccion: it.seccion || 'Teórico',
+    asistencia: String(it.asistencia || '').replace('%',''),
+    certamenes: (it.certamenes || []).map(Number).filter(n=>!isNaN(n)),
+    laboratorios: (it.laboratorios || []).map(Number).filter(n=>!isNaN(n)),
+    notaExamen: it.notaExamen === '' ? '' : Number(it.notaExamen),
+    notaFinal:  it.notaFinal  === '' ? '' : Number(it.notaFinal),
+    estado: it.estado || '',
+    periodo: it.periodo || new Date().getFullYear()
+  }));
+
+  const outPath = path.join(process.cwd(), 'notas.json');
+  fs.writeFileSync(outPath, JSON.stringify(list, null, 2), 'utf8');
+  console.log(`[scraper] OK: notas.json actualizado (${list.length} ramos)`);
 }
-});
+
