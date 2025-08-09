@@ -45,6 +45,9 @@ async function login(){
   const resGet = await http.get(LOGIN_URL, { responseType:'text', validateStatus:()=>true });
   console.log(`[scraper] GET login status: ${resGet.status}`);
 
+  // Guarda la página de login para inspección
+  fs.writeFileSync('debug_login.html', resGet.data, 'utf8');
+
   const $ = cheerio.load(resGet.data);
   let $form = $('form').filter((_,f)=>$(f).find('input[type="password"]').length>0).first();
   if (!$form.length) $form = $('form').first();
@@ -53,31 +56,51 @@ async function login(){
   const action = $form.attr('action') || LOGIN_URL;
   const postUrl = new URL(action, LOGIN_URL).toString();
 
-  const payload = new URLSearchParams();
+  // Lista todos los inputs para debug
+  const inputs = [];
   $form.find('input').each((_, el)=>{
-    const name = $(el).attr('name');
-    const type = ($(el).attr('type') || '').toLowerCase();
-    const val  = $(el).attr('value') || '';
-    if (name && type === 'hidden') payload.set(name, val);
+    inputs.push({
+      name: $(el).attr('name') || '',
+      type: ( $(el).attr('type') || '' ).toLowerCase(),
+      value: $(el).attr('value') || ''
+    });
   });
+  console.log('[scraper] Inputs del formulario:', inputs);
 
+  const payload = new URLSearchParams();
+  // conserva hidden tokens
+  inputs.filter(i => i.type === 'hidden' && i.name).forEach(i => payload.set(i.name, i.value));
+
+  // Intenta descubrir los names
   let userField = (process.env.LOGIN_USER_FIELD || '').trim();
   let passField = (process.env.LOGIN_PASS_FIELD || '').trim();
+
   if (!userField || !passField) {
-    const $pass = $form.find('input[type="password"]').first();
-    if ($pass.length && !passField) passField = $pass.attr('name');
+    const pass = inputs.find(i => i.type === 'password' && i.name);
+    if (pass && !passField) passField = pass.name;
+
     if (!userField) {
-      const $cand = $form.find('input[type="email"], input[autocomplete="username"], input[type="text"]').first();
-      if ($cand.length) userField = $cand.attr('name');
+      const userCand = inputs.find(i =>
+        ['email','text'].includes(i.type) ||
+        (i.name && /user|usuario|rut|login|mail/i.test(i.name))
+      );
+      if (userCand) userField = userCand.name;
     }
   }
-  userField = userField || 'usuario';
-  passField = passField || 'contrasena';
 
+  // Si no encontramos names reales, corta con instrucción clara
+  if (!userField || !passField) {
+    throw new Error(
+      'No pude detectar los names de usuario/clave. Abre el artifact debug_login.html, busca el <input password> y el de usuario, ' +
+      'y crea secrets LOGIN_USER_FIELD y LOGIN_PASS_FIELD con esos nombres.'
+    );
+  }
+
+  // arma payload
   payload.set(userField, USER);
   payload.set(passField, PASS);
 
-  console.log('[scraper] POST login a:', postUrl, `  campos: { ${userField}, ${passField} }`);
+  console.log('[scraper] POST login a:', postUrl, `  usando campos: { ${userField}, ${passField} }`);
   const resPost = await http.post(postUrl, payload.toString(), {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Referer': LOGIN_URL },
     maxRedirects: 5,
@@ -85,8 +108,7 @@ async function login(){
   });
   console.log(`[scraper] POST login status: ${resPost.status}`);
 
-  // ⛔️ ¡NO HAGAS PROBE A NOTAS AQUÍ!
-  // ✅ VISITA LA HOME PARA FIJAR SESIÓN
+  // visita la HOME para fijar sesión
   const HOME_URL = (process.env.HOME_URL || new URL('/SituActual.asp', LOGIN_URL).toString()).trim();
   const home = await http.get(HOME_URL, { validateStatus: ()=>true });
   console.log('[scraper] GET home:', HOME_URL, 'status:', home.status);
@@ -104,13 +126,13 @@ async function fetchNotasHTML(){
   });
   console.log('[scraper] GET notas status:', res.status);
 
-  // Si la página dice "Sesión expirada", guarda el HTML y aborta
   if (/Sesi[oó]n ha Expirado|window\.top\.location\s*=\s*["']alumnos\.asp/i.test(res.data)) {
     fs.writeFileSync('debug_notas.html', res.data, 'utf8');
     throw new Error('El portal devolvió "Sesión expirada" al entrar a NOTAS (con Referer). Revisa debug_notas.html.');
   }
   return res.data;
 }
+
 
 
 function tryExtractEmbeddedJSON(html){
