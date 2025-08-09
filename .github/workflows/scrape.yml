@@ -1,9 +1,11 @@
 name: Refresh notas.json
-
 on:
   schedule:
-    - cron: '0 5 * * *'   # todos los días 05:00 UTC (~01:00 Chile)
-  workflow_dispatch:       # permite ejecutarlo manualmente
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   scrape:
@@ -21,9 +23,36 @@ jobs:
         env:
           PORTAL_USER: ${{ secrets.PORTAL_USER }}
           PORTAL_PASS: ${{ secrets.PORTAL_PASS }}
-          LOGIN_URL: ${{ secrets.LOGIN_URL }}
-          NOTAS_URL: ${{ secrets.NOTAS_URL }}
-        run: node scraping.js || (echo "Guardando HTML de depuración..." && mv debug_notas.html debug_notas_${{ github.run_id }}.html || true)
+          LOGIN_URL:   ${{ secrets.LOGIN_URL }}
+          NOTAS_URL:   ${{ secrets.NOTAS_URL }}
+        run: node scraping.js
+
+      # --- A) Diff y estado del repo (debug)
+      - name: Show repo state
+        run: |
+          echo "PWD=$(pwd)"
+          ls -la
+          git status
+          echo "Changed files:"
+          git diff --name-only || true
+
+      # --- B) Muestra el contenido (primeras líneas)
+      - name: Peek notas.json
+        run: |
+          [ -f notas.json ] || (echo "notas.json no existe en raíz" && exit 1)
+          echo "Primeras 40 líneas de notas.json:"
+          head -n 40 notas.json || true
+          echo "Tamaño:"
+          wc -c notas.json || true
+
+      # --- C) Sube como artifact para inspección (opcional)
+      - name: Upload notas.json (artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notas-json
+          path: notas.json
+          if-no-files-found: error
 
       - name: Commit notas.json
         run: |
