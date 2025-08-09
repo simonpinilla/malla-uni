@@ -135,28 +135,23 @@ function tryExtractEmbeddedJSON(html){
 function parseNotasFromTable(html){
   const $ = cheerio.load(html);
 
-  // Normaliza texto (quita tildes/espacios múltiples)
   const norm = (s)=> String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
                     .replace(/\s+/g,' ').trim().toLowerCase();
 
-  // Encuentra la "mejor" tabla: la que tenga headers compatibles
-  const tables = $('table');
-  let best = null, bestScore = -1;
-
-  tables.each((_, tbl)=>{
-    const $tbl = $(tbl);
-    const headers = $tbl.find('thead th, tr:first th, tr:first td').map((i,el)=>norm($(el).text())).get();
-    if (!headers.length) return;
-
+  // Encuentra la tabla “más probable” por headers
+  let best = null, bestScore = -1, bestHeads = [];
+  $('table').each((_, tbl)=>{
+    const heads = $(tbl).find('thead th, tr:first th, tr:first td').map((i,el)=>norm($(el).text())).get();
+    if (!heads.length) return;
     const wanted = ['codigo','cod','asignatura','ramo','curso','seccion','asistencia','examen','final','estado','periodo','anio','año'];
-    const score = headers.reduce((acc,h)=> acc + (wanted.some(w=>h.includes(w))?1:0), 0);
-
-    if (score > bestScore) { best = $tbl; bestScore = score; }
+    const score = heads.reduce((acc,h)=> acc + (wanted.some(w=>h.includes(w))?1:0), 0);
+    if (score > bestScore) { best = $(tbl); bestScore = score; bestHeads = heads; }
   });
 
-  if (!best) return [];
+  if (!best) { console.log('[scraper] No se encontró ninguna tabla candidata.'); return []; }
+  console.log('[scraper] Tabla candidata encontrada. Encabezados:', bestHeads);
 
-  // Mapea índices de columnas por nombre
+  // Mapear índices por nombre
   const headCells = best.find('thead tr:first th, tr:first th, thead tr:first td, tr:first td').map((i,el)=>norm($(el).text())).get();
   const idxOf = (names)=> {
     let idx = -1;
@@ -169,21 +164,21 @@ function parseNotasFromTable(html){
   };
 
   const idx = {
-    codigo:   idxOf(['codigo','cod']),
-    nombre:   idxOf(['asignatura','ramo','curso','nombre']),
-    seccion:  idxOf(['seccion','sec']),
-    asistencia: idxOf(['asistencia','asis']),
-    examen:   idxOf(['examen','exa']),
-    final:    idxOf(['final','nf','nota final']),
-    estado:   idxOf(['estado','resultado']),
-    periodo:  idxOf(['periodo','semestre','anio','año','year'])
+    codigo:    idxOf(['codigo','cod']),
+    nombre:    idxOf(['asignatura','ramo','curso','nombre']),
+    seccion:   idxOf(['seccion','sec']),
+    asistencia:idxOf(['asistencia','asis']),
+    examen:    idxOf(['examen','exa']),
+    final:     idxOf(['final','nf','nota final']),
+    estado:    idxOf(['estado','resultado']),
+    periodo:   idxOf(['periodo','semestre','anio','año','year'])
   };
 
-  // Índices de certámenes/labs: busca c1..c4, l1..l4
   const cIdx = []; const lIdx = [];
   headCells.forEach((h,i)=>{
-    if (/^c\s*\d+|certamen\s*\d+|pp\s*\d+$/i.test(h.replace(/\s+/g,''))) cIdx.push(i);
-    if (/^l\s*\d+|lab\s*\d+$/i.test(h.replace(/\s+/g,''))) lIdx.push(i);
+    const hs = h.replace(/\s+/g,'');
+    if (/^(c|pp)\d+|certamen\d+$/i.test(hs)) cIdx.push(i);
+    if (/^(l|lab)\d+$/i.test(hs)) lIdx.push(i);
   });
 
   const rows = best.find('tbody tr').length ? best.find('tbody tr') : best.find('tr').slice(1);
@@ -192,29 +187,30 @@ function parseNotasFromTable(html){
   rows.each((_, tr)=>{
     const tds = $(tr).find('td');
     if (!tds.length) return;
-
     const cell = (i)=> safeTrim($(tds[i]||{}).text());
 
-    const certamenes = cIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number);
+    const certamenes   = cIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number);
     const laboratorios = lIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number);
 
     out.push({
-      codigo:    idx.codigo   >=0 ? cell(idx.codigo) : '',
-      nombre:    idx.nombre   >=0 ? cell(idx.nombre) : '',
-      seccion:   idx.seccion  >=0 ? cell(idx.seccion) : 'Teórico',
-      asistencia:idx.asistencia>=0 ? cell(idx.asistencia) : '',
+      codigo:     idx.codigo    >=0 ? cell(idx.codigo)    : '',
+      nombre:     idx.nombre    >=0 ? cell(idx.nombre)    : '',
+      seccion:    idx.seccion   >=0 ? cell(idx.seccion)   : 'Teórico',
+      asistencia: idx.asistencia>=0 ? cell(idx.asistencia): '',
       certamenes,
       laboratorios,
-      notaExamen:idx.examen   >=0 ? (toNum(cell(idx.examen)) || '') : '',
-      notaFinal: idx.final    >=0 ? (toNum(cell(idx.final))  || '') : '',
-      estado:    idx.estado   >=0 ? cell(idx.estado) : '',
-      periodo:   idx.periodo  >=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear()
+      notaExamen: idx.examen    >=0 ? (toNum(cell(idx.examen)) || '') : '',
+      notaFinal:  idx.final     >=0 ? (toNum(cell(idx.final))  || '') : '',
+      estado:     idx.estado    >=0 ? cell(idx.estado)    : '',
+      periodo:    idx.periodo   >=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear()
     });
   });
 
-  // Filtra filas vacías (sin código y sin nombre)
-  return out.filter(r => r.codigo || r.nombre);
+  const cleaned = out.filter(r => r.codigo || r.nombre);
+  console.log(`[scraper] Filas parseadas: ${cleaned.length}`);
+  return cleaned;
 }
+
 
 
 function normalizeFromEmbedded(data){
@@ -275,7 +271,7 @@ async function run(){
 }
 
 // Run
-async function run(){
+aasync function run(){
   console.log('[scraper] Iniciando login…');
   await login();
   await sleep(300);
@@ -284,8 +280,7 @@ async function run(){
   const html = await fetchNotasHTML();
 
   console.log('[scraper] Parseando tabla HTML…');
-  let list = [];                    // <-- ¡asegúrate de tener esta línea!
-
+  let list = [];
   const embedded = tryExtractEmbeddedJSON(html);
   if (embedded) {
     console.log('[scraper] JSON embebido detectado. Normalizando…');
@@ -295,7 +290,6 @@ async function run(){
   }
 
   if (!Array.isArray(list) || list.length === 0) {
-    // volcado de la página para debug
     const debugPath = path.join(process.cwd(), 'debug_notas.html');
     fs.writeFileSync(debugPath, html, 'utf8');
     throw new Error('No se pudo extraer información de notas. Se guardó debug_notas.html para revisar la estructura.');
