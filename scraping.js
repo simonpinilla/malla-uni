@@ -14,6 +14,7 @@ const LOGIN_URL = (process.env.LOGIN_URL || '').trim();
 const NOTAS_URL = (process.env.NOTAS_URL || '').trim();
 const LOGIN_USER_FIELD = (process.env.LOGIN_USER_FIELD || '').trim();
 const LOGIN_PASS_FIELD = (process.env.LOGIN_PASS_FIELD || '').trim();
+const HOME_URL = (process.env.HOME_URL || new URL('/SituActual.asp', LOGIN_URL).toString()).trim();
 
 function requireEnv(name, val) {
   if (!val) { console.error(`[scraper] Falta secret ${name}`); process.exit(1); }
@@ -39,7 +40,6 @@ const toNum = (s)=>{ if(s==null) return ''; const f=parseFloat(String(s).replace
 const safeTrim = (s)=> (s==null)? '': String(s).trim();
 const yearFromText = (t)=>{ const m=String(t||'').match(/20\d{2}/); return m?parseInt(m[0],10):new Date().getFullYear(); };
 
-// ====== login ======
 async function login(){
   console.log('[scraper] GET login:', LOGIN_URL);
   const resGet = await http.get(LOGIN_URL, { responseType:'text', validateStatus:()=>true });
@@ -58,11 +58,12 @@ async function login(){
     const name = $(el).attr('name');
     const type = ($(el).attr('type') || '').toLowerCase();
     const val  = $(el).attr('value') || '';
-    if (name && type==='hidden') payload.set(name, val);
+    if (name && type === 'hidden') payload.set(name, val);
   });
 
-  let userField = LOGIN_USER_FIELD;
-  let passField = LOGIN_PASS_FIELD;
+  // nombres de campos (usa secrets si los definiste; si no, autodetección)
+  let userField = (process.env.LOGIN_USER_FIELD || '').trim();
+  let passField = (process.env.LOGIN_PASS_FIELD || '').trim();
   if (!userField || !passField) {
     const $pass = $form.find('input[type="password"]').first();
     if ($pass.length && !passField) passField = $pass.attr('name');
@@ -79,27 +80,33 @@ async function login(){
 
   console.log('[scraper] POST login a:', postUrl, `  campos: { ${userField}, ${passField} }`);
   const resPost = await http.post(postUrl, payload.toString(), {
-    headers: { 'Content-Type':'application/x-www-form-urlencoded', 'Referer': LOGIN_URL },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Referer': LOGIN_URL },
+    maxRedirects: 5,
     validateStatus: ()=>true
   });
   console.log(`[scraper] POST login status: ${resPost.status}`);
 
-  // Probar acceso a notas
-  const probe = await http.get(NOTAS_URL, { validateStatus:()=>true });
-  console.log('[scraper] Probe NOTAS_URL status:', probe.status);
-  const redirectedToLogin =
-    (probe.request?.res?.responseUrl || '').startsWith(LOGIN_URL) ||
-    (probe.status === 401 || probe.status === 403);
-  if (redirectedToLogin) {
-    throw new Error(`Login falló o redirigió al login nuevamente. Revisa credenciales y nombres de campos.`);
-  }
+  // ⚠️ MUY IMPORTANTE: visitar la HOME para fijar la sesión
+  const home = await http.get(HOME_URL, { validateStatus: ()=>true });
+  console.log('[scraper] GET home:', HOME_URL, 'status:', home.status);
 }
+
 
 // ====== scrape ======
 async function fetchNotasHTML(){
   console.log('[scraper] GET notas:', NOTAS_URL);
-  const res = await http.get(NOTAS_URL, { responseType:'text', validateStatus:()=>true });
+  const res = await http.get(NOTAS_URL, {
+    responseType:'text',
+    validateStatus:()=>true,
+    headers: { Referer: HOME_URL } // ← muchos portales lo exigen
+  });
   console.log('[scraper] GET notas status:', res.status);
+
+  // Si devuelve la página de "sesión expirada", avisa y guarda debug
+  if (/Sesion ha Expirado|Sesi\xf3n ha Expirado|window\.top\.location\s*=\s*["']alumnos\.asp/i.test(res.data)) {
+    fs.writeFileSync(path.join(process.cwd(), 'debug_notas.html'), res.data, 'utf8');
+    throw new Error('El portal devolvió "Sesión expirada" al entrar a NOTAS. Probé login→home→notas con Referer. Revisa debug_notas.html.');
+  }
   return res.data;
 }
 
