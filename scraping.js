@@ -109,6 +109,52 @@ function tryExtractEmbeddedJSON(html){
   if (!m) return null;
   try { return JSON.parse(m[1]); } catch { return null; }
 }
+function absoluteUrl(src, base) {
+  try { return new URL(src, base).toString(); } catch { return src; }
+}
+
+function extractFirstIframeSrc(html, baseUrl) {
+  const $ = cheerio.load(html);
+  const $iframe = $('iframe, frame').first();
+  if ($iframe.length) {
+    const src = $iframe.attr('src') || $iframe.attr('data-src');
+    if (src) return absoluteUrl(src, baseUrl);
+  }
+  return null;
+}
+
+function extractMetaRefresh(html, baseUrl) {
+  const $ = cheerio.load(html);
+  const $meta = $('meta[http-equiv="refresh"], meta[http-equiv="Refresh"]').first();
+  if ($meta.length) {
+    const content = $meta.attr('content') || '';
+    // ej: "0;URL=/alumnos/pagina.aspx"
+    const m = content.match(/url=(.+)$/i);
+    if (m && m[1]) return absoluteUrl(m[1].trim(), baseUrl);
+  }
+  return null;
+}
+
+async function followFramesAndRefresh(html, currentUrl) {
+  // 1) meta refresh
+  const refresh = extractMetaRefresh(html, currentUrl);
+  if (refresh) {
+    console.log('[scraper] Detectado meta refresh →', refresh);
+    const r = await http.get(refresh, { responseType:'text', validateStatus:()=>true });
+    return { html: r.data, url: refresh, status: r.status };
+  }
+
+  // 2) iframe/frame
+  const iframe = extractFirstIframeSrc(html, currentUrl);
+  if (iframe) {
+    console.log('[scraper] Detectado iframe →', iframe);
+    const r = await http.get(iframe, { responseType:'text', validateStatus:()=>true });
+    return { html: r.data, url: iframe, status: r.status };
+  }
+
+  return { html, url: currentUrl, status: 200 };
+}
+
 
 function parseNotasFromTable(html){
   const $ = cheerio.load(html);
@@ -193,17 +239,19 @@ async function run(){
     await sleep(300);
 
     console.log('[scraper] Descargando página de notas…');
-    const html = await fetchNotasHTML();
-
+    let html = await fetchNotasHTML();
+    // Seguir meta-refresh o iframe si existe
+    const stepped = await followFramesAndRefresh(html, NOTAS_URL);
+    html = stepped.html;
+    if (stepped.url !== NOTAS_URL) {
+      console.log('[scraper] Analizando contenido cargado desde:', stepped.url);
+    }
+    
     console.log('[scraper] Parseando…');
     let list = [];
     const embedded = tryExtractEmbeddedJSON(html);
-    if (embedded) {
-      console.log('[scraper] JSON embebido detectado.');
-      list = normalizeFromEmbedded(embedded);
-    } else {
-      list = parseNotasFromTable(html);
-    }
+
+    
 
     if (!Array.isArray(list) || list.length === 0) {
       const debugPath = path.join(process.cwd(), 'debug_notas.html');
