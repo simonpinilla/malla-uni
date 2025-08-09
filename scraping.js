@@ -13,6 +13,11 @@ const PASS = (process.env.PORTAL_PASS || '').trim();
 const LOGIN_URL = (process.env.LOGIN_URL || '').trim();   // URL completa login
 const NOTAS_URL = (process.env.NOTAS_URL || '').trim();   // URL completa concentración de notas
 
+// (opcionales) nombres exactos de los campos del form de login.
+// Si no los defines, el script intentará detectarlos automáticamente.
+const LOGIN_USER_FIELD = (process.env.LOGIN_USER_FIELD || '').trim();
+const LOGIN_PASS_FIELD = (process.env.LOGIN_PASS_FIELD || '').trim();
+
 function requireEnv(name, val) {
   if (!val) { console.error(`[scraper] Falta secret ${name}`); process.exit(1); }
 }
@@ -20,6 +25,7 @@ requireEnv('PORTAL_USER', USER);
 requireEnv('PORTAL_PASS', PASS);
 requireEnv('LOGIN_URL', LOGIN_URL);
 requireEnv('NOTAS_URL', NOTAS_URL);
+
 
 // ====== HTTP client con cookies ======
 const jar = new CookieJar();
