@@ -88,7 +88,7 @@ function parseNotasFromTable(html){
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
     .replace(/\s+/g,' ').trim().toLowerCase();
 
-  // Encontrar la tabla más probable por encabezados
+  // 1) Encontrar la tabla más probable por encabezados
   let best=null, bestScore=-1, bestHeads=[];
   $('table').each((_,tbl)=>{
     const heads = $(tbl).find('thead th, tr:first th, tr:first td')
@@ -102,6 +102,7 @@ function parseNotasFromTable(html){
   if(!best){ console.log('[scraper] No se encontró tabla candidata.'); return []; }
   console.log('[scraper] Tabla candidata. Encabezados:', bestHeads);
 
+  // 2) Índices por header
   const head = best.find('thead tr:first th, tr:first th, thead tr:first td, tr:first td')
     .map((i,el)=>norm($(el).text())).get();
   const findIdx = (alts)=> {
@@ -130,25 +131,28 @@ function parseNotasFromTable(html){
     if (/^(l|lab)\d+$/i.test(hs))             lIdx.push(i);
   });
 
+  // 3) Filas y lectura segura de celdas
   const rows = best.find('tbody tr').length ? best.find('tbody tr') : best.find('tr').slice(1);
   const out=[];
   rows.each((_, tr)=>{
     const $row = $(tr);
     const $tds = $row.find('td');
-    if (!$tds.length) return;
-    const cell = (i)=> safeTrim($($tds[i]||{}).text());
+    const tdCount = $tds.length;
+    if (!tdCount) return;
+
+    const cell = (i)=> (i>=0 && i<tdCount) ? safeTrim($tds.eq(i).text()) : '';
 
     out.push({
-      codigo:      idx.codigo    >=0 ? cell(idx.codigo)    : '',
-      nombre:      idx.nombre    >=0 ? cell(idx.nombre)    : '',
-      seccion:     idx.seccion   >=0 ? cell(idx.seccion)   : 'Teórico',
-      asistencia:  idx.asistencia>=0 ? cell(idx.asistencia): '',
-      certamenes:  cIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number),
-      laboratorios:lIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number),
-      notaExamen:  idx.examen    >=0 ? (toNum(cell(idx.examen))||'') : '',
-      notaFinal:   idx.final     >=0 ? (toNum(cell(idx.final)) ||'') : '',
-      estado:      idx.estado    >=0 ? cell(idx.estado)    : '',
-      periodo:     idx.periodo   >=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear()
+      codigo:      cell(idx.codigo),
+      nombre:      cell(idx.nombre),
+      seccion:     cell(idx.seccion) || 'Teórico',
+      asistencia:  cell(idx.asistencia),
+      certamenes:  cIdx.filter(i=>i<tdCount).map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number),
+      laboratorios:lIdx.filter(i=>i<tdCount).map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number),
+      notaExamen:  idx.examen>=0  ? (toNum(cell(idx.examen))||'') : '',
+      notaFinal:   idx.final>=0   ? (toNum(cell(idx.final)) ||'') : '',
+      estado:      cell(idx.estado),
+      periodo:     (idx.periodo>=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear())
     });
   });
 
@@ -156,6 +160,7 @@ function parseNotasFromTable(html){
   console.log(`[scraper] Filas parseadas: ${cleaned.length}`);
   return cleaned;
 }
+
 
 
 // ====== Run ======
