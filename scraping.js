@@ -95,21 +95,23 @@ async function login(){
 
 // ====== scrape ======
 async function fetchNotasHTML(){
+  const HOME_URL = (process.env.HOME_URL || new URL('/SituActual.asp', LOGIN_URL).toString()).trim();
   console.log('[scraper] GET notas:', NOTAS_URL);
   const res = await http.get(NOTAS_URL, {
     responseType:'text',
     validateStatus:()=>true,
-    headers: { Referer: HOME_URL } // ← muchos portales lo exigen
+    headers: { Referer: HOME_URL }
   });
   console.log('[scraper] GET notas status:', res.status);
 
-  // Si devuelve la página de "sesión expirada", avisa y guarda debug
-  if (/Sesion ha Expirado|Sesi\xf3n ha Expirado|window\.top\.location\s*=\s*["']alumnos\.asp/i.test(res.data)) {
-    fs.writeFileSync(path.join(process.cwd(), 'debug_notas.html'), res.data, 'utf8');
-    throw new Error('El portal devolvió "Sesión expirada" al entrar a NOTAS. Probé login→home→notas con Referer. Revisa debug_notas.html.');
+  // Si la página dice "Sesión expirada", guarda el HTML y aborta
+  if (/Sesi[oó]n ha Expirado|window\.top\.location\s*=\s*["']alumnos\.asp/i.test(res.data)) {
+    fs.writeFileSync('debug_notas.html', res.data, 'utf8');
+    throw new Error('El portal devolvió "Sesión expirada" al entrar a NOTAS (con Referer). Revisa debug_notas.html.');
   }
   return res.data;
 }
+
 
 function tryExtractEmbeddedJSON(html){
   const jsonRegex = /(?:var|let|const)\s+(?:data|notas|__DATA__)\s*=\s*(\{[\s\S]*?\}|\[[\s\S]*?\]);/i;
