@@ -84,64 +84,79 @@ async function fetchNotasHTML(){
 // ====== Parser por encabezados ======
 function parseNotasFromTable(html){
   const $ = cheerio.load(html);
-  const norm = s => String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase();
+  const norm = s => String(s||'')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .replace(/\s+/g,' ').trim().toLowerCase();
 
+  // Encontrar la tabla más probable por encabezados
   let best=null, bestScore=-1, bestHeads=[];
   $('table').each((_,tbl)=>{
-    const heads = $(tbl).find('thead th, tr:first th, tr:first td').map((i,el)=>norm($(el).text())).get();
+    const heads = $(tbl).find('thead th, tr:first th, tr:first td')
+      .map((i,el)=>norm($(el).text())).get();
     if (!heads.length) return;
     const wanted = ['codigo','cod','asignatura','ramo','curso','seccion','asistencia','examen','final','estado','periodo','anio','año'];
-    const score = heads.reduce((a,h)=>a + (wanted.some(w=>h.includes(w))?1:0), 0);
+    const score = heads.reduce((a,h)=> a + (wanted.some(w=>h.includes(w))?1:0), 0);
     if (score>bestScore){ best=$(tbl); bestScore=score; bestHeads=heads; }
   });
+
   if(!best){ console.log('[scraper] No se encontró tabla candidata.'); return []; }
   console.log('[scraper] Tabla candidata. Encabezados:', bestHeads);
 
-  const head = best.find('thead tr:first th, tr:first th, thead tr:first td, tr:first td').map((i,el)=>norm($(el).text())).get();
-  const findIdx = (alts)=> alts.map(a=>head.findIndex(h=>h.includes(a))).find(i=>i>=0) ?? -1;
+  const head = best.find('thead tr:first th, tr:first th, thead tr:first td, tr:first td')
+    .map((i,el)=>norm($(el).text())).get();
+  const findIdx = (alts)=> {
+    for (const a of alts){
+      const i = head.findIndex(h=>h.includes(a));
+      if (i>=0) return i;
+    }
+    return -1;
+  };
 
   const idx = {
-    codigo:    findIdx(['codigo','cod']),
-    nombre:    findIdx(['asignatura','ramo','curso','nombre']),
-    seccion:   findIdx(['seccion','sec']),
-    asistencia:findIdx(['asistencia','asis']),
-    examen:    findIdx(['examen','exa']),
-    final:     findIdx(['final','nf','nota final']),
-    estado:    findIdx(['estado','resultado']),
-    periodo:   findIdx(['periodo','semestre','anio','año','year']),
+    codigo:     findIdx(['codigo','cod']),
+    nombre:     findIdx(['asignatura','ramo','curso','nombre']),
+    seccion:    findIdx(['seccion','sec']),
+    asistencia: findIdx(['asistencia','asis']),
+    examen:     findIdx(['examen','exa']),
+    final:      findIdx(['final','nf','nota final']),
+    estado:     findIdx(['estado','resultado']),
+    periodo:    findIdx(['periodo','semestre','anio','año','year']),
   };
 
   const cIdx=[], lIdx=[];
   head.forEach((h,i)=>{
     const hs=h.replace(/\s+/g,'');
     if (/^(c|pp)\d+|certamen\d+$/i.test(hs)) cIdx.push(i);
-    if (/^(l|lab)\d+$/i.test(hs))           lIdx.push(i);
+    if (/^(l|lab)\d+$/i.test(hs))             lIdx.push(i);
   });
 
   const rows = best.find('tbody tr').length ? best.find('tbody tr') : best.find('tr').slice(1);
   const out=[];
-  rows.each((_,tr)=>{
-    const tds = cheerio(tr).find('td');
-    if(!tds.length) return;
-    const cell = (i)=> safeTrim(cheerio(tds[i]||{}).text());
+  rows.each((_, tr)=>{
+    const $row = $(tr);
+    const $tds = $row.find('td');
+    if (!$tds.length) return;
+    const cell = (i)=> safeTrim($($tds[i]||{}).text());
+
     out.push({
-      codigo:     idx.codigo    >=0 ? cell(idx.codigo)    : '',
-      nombre:     idx.nombre    >=0 ? cell(idx.nombre)    : '',
-      seccion:    idx.seccion   >=0 ? cell(idx.seccion)   : 'Teórico',
-      asistencia: idx.asistencia>=0 ? cell(idx.asistencia): '',
-      certamenes: cIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number),
+      codigo:      idx.codigo    >=0 ? cell(idx.codigo)    : '',
+      nombre:      idx.nombre    >=0 ? cell(idx.nombre)    : '',
+      seccion:     idx.seccion   >=0 ? cell(idx.seccion)   : 'Teórico',
+      asistencia:  idx.asistencia>=0 ? cell(idx.asistencia): '',
+      certamenes:  cIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number),
       laboratorios:lIdx.map(i=>toNum(cell(i))).filter(x=>x!=='').map(Number),
-      notaExamen: idx.examen    >=0 ? (toNum(cell(idx.examen))||'') : '',
-      notaFinal:  idx.final     >=0 ? (toNum(cell(idx.final)) ||'') : '',
-      estado:     idx.estado    >=0 ? cell(idx.estado)    : '',
-      periodo:    idx.periodo   >=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear()
+      notaExamen:  idx.examen    >=0 ? (toNum(cell(idx.examen))||'') : '',
+      notaFinal:   idx.final     >=0 ? (toNum(cell(idx.final)) ||'') : '',
+      estado:      idx.estado    >=0 ? cell(idx.estado)    : '',
+      periodo:     idx.periodo   >=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear()
     });
   });
 
-  const cleaned = out.filter(r=>r.codigo||r.nombre);
+  const cleaned = out.filter(r => r.codigo || r.nombre);
   console.log(`[scraper] Filas parseadas: ${cleaned.length}`);
   return cleaned;
 }
+
 
 // ====== Run ======
 async function run(){
