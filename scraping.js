@@ -7,67 +7,45 @@ const cheerio = require('cheerio');
 const { CookieJar } = require('tough-cookie');
 const { wrapper } = require('axios-cookiejar-support');
 
-// ====== CONFIG via Secrets (solo 2 URLs) ======
+// ====== CONFIG via Secrets ======
 const USER = (process.env.PORTAL_USER || '').trim();
 const PASS = (process.env.PORTAL_PASS || '').trim();
+const LOGIN_URL = (process.env.LOGIN_URL || '').trim();   // URL completa login
+const NOTAS_URL = (process.env.NOTAS_URL || '').trim();   // URL completa concentración de notas
 
-const LOGIN_URL = (process.env.LOGIN_URL || '').trim();   // URL completa de login
-const NOTAS_URL = (process.env.NOTAS_URL || '').trim();   // URL completa de concentración
-
-function requireEnv(name, val){
+function requireEnv(name, val) {
   if (!val) { console.error(`[scraper] Falta secret ${name}`); process.exit(1); }
 }
 requireEnv('PORTAL_USER', USER);
 requireEnv('PORTAL_PASS', PASS);
-requireEnv('LOGIN_URL',  LOGIN_URL);
-requireEnv('NOTAS_URL',  NOTAS_URL);
-
-// (opcional) nombres de campos del form; si no los defines, los detecta solo
-const LOGIN_USER_FIELD = (process.env.LOGIN_USER_FIELD || '').trim();
-const LOGIN_PASS_FIELD = (process.env.LOGIN_PASS_FIELD || '').trim();
-
-// Validaciones duras (fallar con mensaje claro)
-function requireEnv(name, val){
-  if (!val) {
-    console.error(`[scraper] Falta secret ${name}. Configúralo en Settings → Secrets and variables → Actions`);
-    process.exit(1);
-  }
-}
-requireEnv('PORTAL_USER', USER);
-requireEnv('PORTAL_PASS', PASS);
-requireEnv('PORTAL_BASE', PORTAL_BASE);
-requireEnv('LOGIN_PATH',  LOGIN_PATH);
-requireEnv('NOTAS_PATH',  NOTAS_PATH);
-
-const LOGIN_URL = new URL(LOGIN_PATH, PORTAL_BASE).toString();
-const NOTAS_URL = new URL(NOTAS_PATH, PORTAL_BASE).toString();
+requireEnv('LOGIN_URL', LOGIN_URL);
+requireEnv('NOTAS_URL', NOTAS_URL);
 
 // ====== HTTP client con cookies ======
 const jar = new CookieJar();
 const http = wrapper(axios.create({
   jar,
   withCredentials: true,
-  maxRedirects: 5,
   headers: {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
   },
   timeout: 60000
 }));
 
 // ====== helpers ======
-const sleep = (ms)=> new Promise(r=>setTimeout(r, ms));
-const toNum = (s)=> {
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const toNum = (s) => {
   if (s == null) return '';
   const n = String(s).replace(',', '.').trim();
   const f = parseFloat(n);
   return isNaN(f) ? '' : f.toFixed(1);
 };
-const safeTrim = (s)=> (s==null)? '' : String(s).trim();
-const yearFromText = (t)=> {
-  const m = String(t||'').match(/20\d{2}/);
-  return m ? parseInt(m[0],10) : (new Date().getFullYear());
-};
+function safeTrim(s) { return (s == null) ? '' : String(s).trim(); }
+function yearFromText(t) {
+  const m = String(t || '').match(/20\d{2}/);
+  return m ? parseInt(m[0], 10) : (new Date().getFullYear());
+}
 
 // ====== login ======
 async function login(){
