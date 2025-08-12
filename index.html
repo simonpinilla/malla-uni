@@ -435,6 +435,127 @@ loginForm.addEventListener('submit', async (e)=>{
   openApp();
 });
 init();
+  <script>
+// ===== Vista Malla =====
+let MALLA_DATA = null;
+let currentView = 'concentracion'; // 'concentracion' | 'malla'
+
+// carga malla.json on-demand
+async function ensureMalla(){
+  if (MALLA_DATA) return MALLA_DATA;
+  const res = await fetch('./malla.json', {cache:'no-store'});
+  if (!res.ok) throw new Error('No se pudo cargar malla.json');
+  MALLA_DATA = await res.json();
+  return MALLA_DATA;
+}
+
+// mapa de estado real desde notas.json (aprobado/cursando/reprobado)
+function buildEstadoPorCodigo(notasList){
+  const map = new Map();
+  (notasList||[]).forEach(r=>{
+    const code = String(r.codigo||'').trim().toUpperCase();
+    if(!code) return;
+    const final = Number(r.notaFinal||0);
+    const estadoTxt = String(r.estado||'').toUpperCase();
+    let estado;
+    if (estadoTxt.includes('APROB')) estado = 'APROBADO';
+    else if (estadoTxt.includes('REPROB')) estado = 'REPROBADO';
+    else if (final > 0) estado = (final >= 4.0 ? 'APROBADO' : 'REPROBADO');
+    else estado = 'CURSANDO';
+    // si ya estaba aprobado, mantén aprobado (no lo pises con cursando)
+    if (!map.has(code) || map.get(code)==='CURSANDO') map.set(code, estado);
+  });
+  return map;
+}
+
+// render malla completa (Año -> Periodo)
+async function renderMalla(){
+  const gridEl = document.getElementById('grid');
+  gridEl.innerHTML = '';
+  gridEl.className = 'grid';
+
+  const malla = await ensureMalla();
+
+  // notas reales ya están en store.student.terms -> courses (adaptado)
+  // pero para fidelidad, mejor usar el archivo original:
+  let notasArray = [];
+  try{
+    const r = await fetch('./notas.json',{cache:'no-store'});
+    if (r.ok) notasArray = await r.json();
+  }catch{}
+
+  const estadoPorCodigo = buildEstadoPorCodigo(notasArray);
+
+  // helper de card
+  const pillClass = (s)=> s==='APROBADO' ? 'ok' : (s==='REPROBADO' ? 'bad' : 'warn');
+
+  // años ascendentes
+  const years = Object.keys(malla).map(Number).sort((a,b)=>a-b);
+  years.forEach(anio=>{
+    // 2 columnas: periodo 1 y 2
+    [1,2].forEach(sem=>{
+      const cursos = (malla[anio] && malla[anio][sem]) ? malla[anio][sem] : [];
+      if (!cursos.length) return;
+
+      // encabezado del bloque
+      const col = document.createElement('section');
+      col.className = 'term-col';
+      col.innerHTML = `
+        <div class="term-head">
+          <div><strong>Año ${anio}</strong> <small>Periodo ${sem}</small></div>
+          <small>${cursos.length} ramos</small>
+        </div>`;
+      
+      // cursos
+      cursos.forEach(c=>{
+        const code = (c.code||'').toUpperCase();
+        const estadoReal = estadoPorCodigo.get(code) || 'PENDIENTE';
+        const card = document.createElement('article');
+        card.className = 'course';
+        card.innerHTML = `
+          <div class="title">${c.name}</div>
+          <div class="meta">
+            <span class="tag">${code}</span>
+            <span class="tag">Plan ${store?.student?.plan || ''}</span>
+          </div>
+          <div class="status">
+            <span class="pill ${pillClass(estadoReal)}">${estadoReal}</span>
+            <span style="margin-left:auto">Final: <b>${estadoReal==='APROBADO' ? '≥4.0' : '—'}</b></span>
+          </div>
+          <div class="actions">
+            <button class="ghost" data-code="${code}">Ver en concentración</button>
+          </div>`;
+        // botón para saltar a la vista concentración filtrando por el código
+        card.querySelector('button[data-code]').addEventListener('click', ()=>{
+          currentView = 'concentracion';
+          document.getElementById('toggleView').textContent = 'Ver Malla';
+          document.getElementById('q').value = code;
+          store.filters.q = code;
+          renderGrid();
+          window.scrollTo({top:0, behavior:'smooth'});
+        });
+        col.appendChild(card);
+      });
+
+      gridEl.appendChild(col);
+    });
+  });
+}
+
+// wiring del botón
+document.getElementById('toggleView').addEventListener('click', async ()=>{
+  if (currentView === 'concentracion') {
+    currentView = 'malla';
+    document.getElementById('toggleView').textContent = 'Ver Concentración';
+    await renderMalla();
+  } else {
+    currentView = 'concentracion';
+    document.getElementById('toggleView').textContent = 'Ver Malla';
+    renderGrid();
+  }
+});
+</script>
+
 </script>
 </body>
 </html>
