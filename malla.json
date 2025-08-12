@@ -1,0 +1,77 @@
+{
+  "1": {
+    "1": [
+      {"code":"TECM-2401","name":"Introducción a la Tecnología Médica"},
+      {"code":"FCSA-2402","name":"Biología Celular y Molecular"},
+      {"code":"FGRA-2401","name":"Comunicación Oral y Escrita"},
+      {"code":"FGRA-2402","name":"Matemática Básica"},
+      {"code":"FGRA-2403","name":"Introducción a la Salud Pública"}
+    ],
+    "2": [
+      {"code":"TECM-2402","name":"Anatomía Humana"},
+      {"code":"FCSA-2403","name":"Bioquímica General"},
+      {"code":"FGRA-2404","name":"Física General"},
+      {"code":"FGRA-2405","name":"Habilidades para el Aprendizaje Autónomo"},
+      {"code":"FGRA-2406","name":"Salud y Sociedad"}
+    ]
+  },
+  "2": {
+    "1": [
+      {"code":"TECM-2403","name":"Histología y Embriología"},
+      {"code":"FCSA-2404","name":"Fisiología Humana"},
+      {"code":"FGRA-2407","name":"Estadística Descriptiva"},
+      {"code":"FGRA-2408","name":"Ética Profesional"},
+      {"code":"FGRA-2409","name":"Metodología de la Investigación I"}
+    ],
+    "2": [
+      {"code":"TECM-2404","name":"Microbiología General"},
+      {"code":"TECM-2405","name":"Bioquímica Clínica"},
+      {"code":"FGRA-2410","name":"Física Aplicada"},
+      {"code":"FGRA-2411","name":"Inglés Técnico I"},
+      {"code":"FGRA-2412","name":"Metodología de la Investigación II"}
+    ]
+  },
+  "3": {
+    "1": [
+      {"code":"TECM-2406","name":"Parasitología Clínica"},
+      {"code":"TECM-2407","name":"Inmunología"},
+      {"code":"TECM-2408","name":"Hematología I"},
+      {"code":"TECM-2409","name":"Bioestadística"},
+      {"code":"FGRA-2413","name":"Inglés Técnico II"}
+    ],
+    "2": [
+      {"code":"TECM-2410","name":"Hematología II"},
+      {"code":"TECM-2411","name":"Microbiología Clínica I"},
+      {"code":"TECM-2412","name":"Bioquímica Clínica Aplicada"},
+      {"code":"TECM-2413","name":"Genética y Biología Molecular"},
+      {"code":"FGRA-2414","name":"Gestión en Salud"}
+    ]
+  },
+  "4": {
+    "1": [
+      {"code":"TECM-2414","name":"Microbiología Clínica II"},
+      {"code":"TECM-2415","name":"Inmunohematología"},
+      {"code":"TECM-2416","name":"Toxicología Clínica"},
+      {"code":"TECM-2417","name":"Biología Celular Aplicada"},
+      {"code":"FGRA-2415","name":"Gestión de Calidad"}
+    ],
+    "2": [
+      {"code":"TECM-2418","name":"Biología Molecular Aplicada"},
+      {"code":"TECM-2419","name":"Biotecnología"},
+      {"code":"TECM-2420","name":"Laboratorio Clínico Integral I"},
+      {"code":"FGRA-2416","name":"Legislación Sanitaria"},
+      {"code":"FGRA-2417","name":"Salud Ambiental"}
+    ]
+  },
+  "5": {
+    "1": [
+      {"code":"TECM-2421","name":"Laboratorio Clínico Integral II"},
+      {"code":"TECM-2422","name":"Investigación en Tecnología Médica"},
+      {"code":"TECM-2423","name":"Práctica Profesional I"}
+    ],
+    "2": [
+      {"code":"TECM-2424","name":"Práctica Profesional II"},
+      {"code":"TECM-2425","name":"Seminario de Titulación"}
+    ]
+  }
+}
