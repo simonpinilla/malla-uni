@@ -9,7 +9,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "TECM-2402",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "TECM-2401",
@@ -21,7 +23,23 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "TECM-2401",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
+  },
+  {
+    "codigo": "NIV0-2401",
+    "nombre": "NIV0-2401",
+    "seccion": "NIV0-2401",
+    "asistencia": "NIV0-2401",
+    "certamenes": [],
+    "laboratorios": [],
+    "notaExamen": "",
+    "notaFinal": "",
+    "estado": "NIV0-2401",
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FGRA-2401",
@@ -33,7 +51,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FGRA-2401",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2403",
@@ -45,7 +65,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2403",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2403",
@@ -57,7 +79,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2403",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2402",
@@ -69,7 +93,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2402",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2402",
@@ -81,7 +107,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2402",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2401",
@@ -93,7 +121,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2401",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2401",
@@ -105,7 +135,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2401",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "TECM-2404",
@@ -117,7 +149,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "TECM-2404",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "TECM-2404",
@@ -129,7 +163,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "TECM-2404",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "TECM-2403",
@@ -141,7 +177,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "TECM-2403",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "TECM-2403",
@@ -153,7 +191,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "TECM-2403",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2404",
@@ -165,7 +205,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2404",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2404",
@@ -177,7 +219,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2404",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2205",
@@ -189,7 +233,9 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2205",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   },
   {
     "codigo": "FCSA-2202",
@@ -201,6 +247,8 @@
     "notaExamen": "",
     "notaFinal": "",
     "estado": "FCSA-2202",
-    "periodo": 2025
+    "periodo": 2025,
+    "semestre": 1,
+    "periodoKey": "2025-1"
   }
 ]
