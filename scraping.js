@@ -1,4 +1,4 @@
-// scraping.js – UDALBA (login ValidaClave.asp + home + notas)
+// scraping.js – UDALBA (login ValidaClave.asp + home + concentración de notas)
 // deps: npm i axios cheerio tough-cookie axios-cookiejar-support
 const fs = require('fs');
 const path = require('path');
@@ -10,9 +10,9 @@ const { wrapper } = require('axios-cookiejar-support');
 // ====== ENV ======
 const USER      = (process.env.PORTAL_USER || '').trim();
 const PASS      = (process.env.PORTAL_PASS || '').trim();
-const LOGIN_URL = (process.env.LOGIN_URL   || '').trim(); // https://alumnos.udalba.cl/alumnos.asp
-const NOTAS_URL = (process.env.NOTAS_URL   || '').trim(); // https://alumnos.udalba.cl/concent-notas.asp
-const HOME_URL  = (process.env.HOME_URL    || new URL('/SituActual.asp', LOGIN_URL).toString()).trim();
+const LOGIN_URL = (process.env.LOGIN_URL   || '').trim(); // ej: https://alumnos.udalba.cl/alumnos.asp
+const NOTAS_URL = (process.env.NOTAS_URL   || '').trim(); // ej: https://alumnos.udalba.cl/concent-notas.asp
+const HOME_URL  = (process.env.HOME_URL    || (LOGIN_URL ? new URL('/SituActual.asp', new URL(LOGIN_URL).origin).toString() : '')).trim();
 
 function requireEnv(name, v){ if(!v){ console.error(`[scraper] Falta ${name}`); process.exit(1); } }
 requireEnv('PORTAL_USER', USER);
@@ -25,30 +25,37 @@ const jar = new CookieJar();
 const http = wrapper(axios.create({
   jar, withCredentials:true, timeout:60000,
   headers:{
-    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/124 Safari/537.36',
+    'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
     'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
   }
 }));
 
 // ====== Helpers ======
-const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const toNum = s => { if(s==null) return ''; const f = parseFloat(String(s).replace(',','.').trim()); return isNaN(f)?'':f.toFixed(1); };
-const safeTrim = s => s==null ? '' : String(s).trim();
 const yearFromText = t => { const m = String(t||'').match(/20\d{2}/); return m ? parseInt(m[0],10) : new Date().getFullYear(); };
-const baseOf = (url)=> new URL(url).origin;
+const semesterFromText = t => {
+  const s = String(t || '');
+  let m = s.match(/(?:periodo|semestre)\s*([12])/i);
+  if (!m) m = s.match(/\b([12])\b/);
+  return m ? parseInt(m[1], 10) : 1;
+};
+const norm = s => String(s||'')
+  .replace(/<!--[\s\S]*?-->/g, '')
+  .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .replace(/\s+/g,' ').trim().toLowerCase();
 
 // ====== LOGIN (UDALBA) ======
 async function login(){
-  const BASE = baseOf(LOGIN_URL);
+  const base = new URL(LOGIN_URL).origin;
 
-  // 1) GET página de login (solo para cookies iniciales y por si se requiere token visual)
+  // 1) GET login (cookies iniciales)
   console.log('[scraper] GET login:', LOGIN_URL);
   const resGet = await http.get(LOGIN_URL, { responseType:'text', validateStatus:()=>true });
   console.log('[scraper] GET login status:', resGet.status);
   fs.writeFileSync('debug_login.html', resGet.data, 'utf8');
 
-  // 2) POST credenciales a ValidaClave.asp con names reales (logrut/logclave)
-  const postUrl = new URL('/ValidaClave.asp', BASE).toString();
+  // 2) POST credenciales a ValidaClave.asp (names reales: logrut / logclave)
+  const postUrl = new URL('/ValidaClave.asp', base).toString();
   const form = new URLSearchParams({ logrut: USER, logclave: PASS });
   console.log('[scraper] POST login a:', postUrl, 'campos: { logrut, logclave }');
   const resPost = await http.post(postUrl, form.toString(), {
@@ -57,10 +64,12 @@ async function login(){
   });
   console.log('[scraper] POST login status:', resPost.status);
 
-  // 3) Visitar la HOME para fijar sesión
-  const home = await http.get(HOME_URL, { validateStatus:()=>true });
-  console.log('[scraper] GET home:', HOME_URL, 'status:', home.status);
-  if (home.status >= 400) throw new Error('No se pudo abrir la HOME después del login.');
+  // 3) HOME para fijar sesión
+  if (HOME_URL) {
+    const home = await http.get(HOME_URL, { validateStatus:()=>true });
+    console.log('[scraper] GET home:', HOME_URL, 'status:', home.status);
+    if (home.status >= 400) throw new Error('No se pudo abrir la HOME después del login.');
+  }
 }
 
 // ====== NOTAS ======
@@ -69,7 +78,7 @@ async function fetchNotasHTML(){
   const res = await http.get(NOTAS_URL, {
     responseType:'text',
     validateStatus:()=>true,
-    headers: { Referer: HOME_URL }
+    headers: { Referer: HOME_URL || LOGIN_URL }
   });
   console.log('[scraper] GET notas status:', res.status);
 
@@ -81,33 +90,22 @@ async function fetchNotasHTML(){
   return res.data;
 }
 
-// ====== Parser por encabezados ======
+// ====== Parser por encabezados (tabla de concentración completa) ======
 function parseNotasFromTable(html){
   const $ = cheerio.load(html);
-
-  // Limpieza: fuera scripts/estilos/comentarios
   $('script, style, noscript').remove();
 
-  const norm = s => String(s||'')
-    .replace(/<!--[\s\S]*?-->/g, '')                // comentarios html
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // sin tildes
-    .replace(/\s+/g,' ').trim().toLowerCase();
-
-  // ¿es la tabla de concentración?
-  const isNotasHead = (heads)=> heads.some(h=>h.includes('codigo del ramo'))
-                         && heads.some(h=>h.includes('nombre del ramo'));
-
-  // Encuentra la mejor tabla por cabeceras
+  // elegir la mejor tabla por cabeceras
   let best=null, bestHeads=[], bestScore=-1;
   $('table').each((_,tbl)=>{
     const heads = $(tbl).find('thead th, tr:first th, tr:first td')
       .map((i,el)=>norm($(el).text())).get();
     if (!heads.length) return;
 
-    // prioriza si es claramente la tabla de notas
     let score = 0;
-    if (isNotasHead(heads)) score += 100;
-    const wanted = ['codigo','ramo','asignatura','seccion','periodo','final','estado','anio','año'];
+    // fuerte pista: contiene "codigo del ramo" y "nombre del ramo"
+    if (heads.some(h=>h.includes('codigo del ramo')) && heads.some(h=>h.includes('nombre del ramo'))) score += 100;
+    const wanted = ['codigo','ramo','asignatura','seccion','periodo','final','estado','anio','año','semestre'];
     score += heads.reduce((a,h)=> a + (wanted.some(w=>h.includes(w))?1:0), 0);
 
     if (score>bestScore){ best=$(tbl); bestHeads=heads; bestScore=score; }
@@ -148,23 +146,24 @@ function parseNotasFromTable(html){
 
   const rows = best.find('tbody tr').length ? best.find('tbody tr') : best.find('tr').slice(1);
   const out=[];
-  const codigoRe = /^[A-ZÁÉÍÓÚÑ]{3,6}-\d{4}$/i;   // p.ej. TECM-2402, FCSA-2401, NIV0-2403
+  const codigoRe = /^[A-ZÁÉÍÓÚÑ0-9]{3,6}-\d{4}$/i; // ej: TECM-2402, FCSA-2401, NIV0-2403
 
   rows.each((_, tr)=>{
     const $row = $(tr);
     const $tds = $row.find('td');
     const tdCount = $tds.length;
     if (!tdCount) return;
-
     const cell = (i)=> (i>=0 && i<tdCount) ? String($tds.eq(i).text()).trim() : '';
 
     const codigo = cell(idx.codigo);
     const nombre = cell(idx.nombre);
-
-    // Filtros anti-ruido
     if (!codigo || !codigoRe.test(codigo)) return;
-    const nameNorm = norm(nombre);
-    if (!nombre || nameNorm.includes('nombre del alumno')) return;
+    if (!nombre || /nombre del alumno/i.test(nombre)) return;
+
+    const periodoTxt = idx.periodo>=0 ? cell(idx.periodo) : '';
+    const anio = periodoTxt ? yearFromText(periodoTxt) : new Date().getFullYear();
+    const semestre = semesterFromText(periodoTxt);
+    const periodoKey = `${anio}-${semestre}`;
 
     out.push({
       codigo,
@@ -176,7 +175,10 @@ function parseNotasFromTable(html){
       notaExamen:  idx.examen>=0 ? (toNum(cell(idx.examen))||'') : '',
       notaFinal:   idx.final >=0 ? (toNum(cell(idx.final)) ||'') : '',
       estado:      cell(idx.estado),
-      periodo:     (idx.periodo>=0 ? yearFromText(cell(idx.periodo)) : new Date().getFullYear()),
+      // campos de periodo
+      periodo:     anio,       // compat con tu front actual (año)
+      semestre,                 // 1 o 2
+      periodoKey                // "YYYY-1" o "YYYY-2"
     });
   });
 
@@ -184,15 +186,12 @@ function parseNotasFromTable(html){
   return out;
 }
 
-
-
-
 // ====== Run ======
 async function run(){
   try{
     console.log('[scraper] Iniciando…');
     await login();
-    // sin esperas largas
+
     console.log('[scraper] Descargando página de notas…');
     const html = await fetchNotasHTML();
 
@@ -204,7 +203,7 @@ async function run(){
       throw new Error('No se pudo extraer información de notas. Guardado debug_notas.html para revisar.');
     }
 
-    // limpieza y guardado
+    // limpieza tipado + compat
     list = list.map(it=>({
       codigo: it.codigo,
       nombre: it.nombre,
@@ -215,13 +214,29 @@ async function run(){
       notaExamen: it.notaExamen==='' ? '' : Number(it.notaExamen),
       notaFinal:  it.notaFinal ==='' ? '' : Number(it.notaFinal),
       estado: it.estado || '',
-      periodo: it.periodo || new Date().getFullYear()
+      periodo: it.periodo || new Date().getFullYear(), // año para UI actual
+      semestre: it.semestre || 1,
+      periodoKey: it.periodoKey || `${it.periodo || new Date().getFullYear()}-${it.semestre || 1}`
     }));
 
-    const outPath = path.join(process.cwd(),'notas.json');
-    fs.writeFileSync(outPath, JSON.stringify(list,null,2), 'utf8');
-    const bytes = fs.statSync(outPath).size;
-    console.log(`[scraper] OK: notas.json actualizado (${list.length} ramos, ${bytes} bytes)`);
+    // --- A) notas.json (lista plana) ---
+    const outA = path.join(process.cwd(),'notas.json');
+    fs.writeFileSync(outA, JSON.stringify(list, null, 2), 'utf8');
+
+    // --- B) notas_periodos.json (agrupado por "YYYY-S") ---
+    const grouped = {};
+    for (const it of list) {
+      const k = it.periodoKey;
+      if (!grouped[k]) grouped[k] = [];
+      grouped[k].push(it);
+    }
+    const outB = path.join(process.cwd(),'notas_periodos.json');
+    fs.writeFileSync(outB, JSON.stringify(grouped, null, 2), 'utf8');
+
+    const bytesA = fs.statSync(outA).size;
+    const bytesB = fs.statSync(outB).size;
+    console.log(`[scraper] OK: notas.json (${list.length} ramos, ${bytesA} bytes)`);
+    console.log(`[scraper] OK: notas_periodos.json (${Object.keys(grouped).length} periodos, ${bytesB} bytes)`);
   }catch(err){
     console.error('[scraper] ERROR:', err && err.stack || err);
     process.exit(1);
