@@ -411,31 +411,39 @@ async function run(){
 
 
     
-      const out = cleanAggregateAndWeight(list);
-      fs.writeFileSync(path.join(process.cwd(), 'notas.json'), JSON.stringify(out, null, 2), 'utf8');
-      console.log(`[scraper] OK: notas.json limpio (${out.length} ramos)`);
-      
-      // (opcional) valida diferencias entre finalPortal y finalCalculado
-      const dif = out.filter(x => Number.isFinite(x.finalPortal) && Number.isFinite(x.finalCalculado) && Math.abs(x.finalPortal - x.finalCalculado) > 0.2);
-      if (dif.length) {
-        console.log(`[scraper] Aviso: ${dif.length} ramos con diferencia > 0.2 entre finalPortal y finalCalculado (revisar pesos).`);
-      }
+          // --- A) notas.json (lista limpia/unificada) ---
+    const out = cleanAggregateAndWeight(list);
+    const outA = path.join(process.cwd(), 'notas.json');
+    fs.writeFileSync(outA, JSON.stringify(out, null, 2), 'utf8');
+    console.log(`[scraper] OK: notas.json limpio (${out.length} ramos)`);
 
+    // (opcional) valida diferencias entre finalPortal y finalCalculado
+    const dif = out.filter(x =>
+      Number.isFinite(x.finalPortal) &&
+      Number.isFinite(x.finalCalculado) &&
+      Math.abs(x.finalPortal - x.finalCalculado) > 0.2
+    );
+    if (dif.length) {
+      console.log(`[scraper] Aviso: ${dif.length} ramos con diferencia > 0.2 entre finalPortal y finalCalculado (revisar pesos).`);
+    }
 
     // --- B) notas_periodos.json (agrupado por "YYYY-S") ---
     const grouped = {};
-    for (const it of list) {
-      const k = it.periodoKey;
-      if (!grouped[k]) grouped[k] = [];
-      grouped[k].push(it);
+    for (const it of out) {
+      const y = it.anio || new Date().getFullYear();
+      const s = it.semestre || 1;
+      const k = `${y}-${s}`;
+      (grouped[k] ||= []).push(it);
     }
-    const outB = path.join(process.cwd(),'notas_periodos.json');
+    const outB = path.join(process.cwd(), 'notas_periodos.json');
     fs.writeFileSync(outB, JSON.stringify(grouped, null, 2), 'utf8');
 
+    // logs de tamaños correctos
     const bytesA = fs.statSync(outA).size;
     const bytesB = fs.statSync(outB).size;
-    console.log(`[scraper] OK: notas.json (${list.length} ramos, ${bytesA} bytes)`);
+    console.log(`[scraper] OK: notas.json (${out.length} ramos, ${bytesA} bytes)`);
     console.log(`[scraper] OK: notas_periodos.json (${Object.keys(grouped).length} periodos, ${bytesB} bytes)`);
+
   }catch(err){
     console.error('[scraper] ERROR:', err && err.stack || err);
     process.exit(1);
