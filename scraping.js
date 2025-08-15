@@ -203,25 +203,224 @@ async function run(){
       throw new Error('No se pudo extraer información de notas. Guardado debug_notas.html para revisar.');
     }
 
-    // limpieza tipado + compat
-    list = list.map(it=>({
-      codigo: it.codigo,
-      nombre: it.nombre,
-      seccion: it.seccion || 'Teórico',
-      asistencia: String(it.asistencia||'').replace('%',''),
-      certamenes: (it.certamenes||[]).map(Number).filter(n=>!isNaN(n)),
-      laboratorios:(it.laboratorios||[]).map(Number).filter(n=>!isNaN(n)),
-      notaExamen: it.notaExamen==='' ? '' : Number(it.notaExamen),
-      notaFinal:  it.notaFinal ==='' ? '' : Number(it.notaFinal),
-      estado: it.estado || '',
-      periodo: it.periodo || new Date().getFullYear(), // año para UI actual
-      semestre: it.semestre || 1,
-      periodoKey: it.periodoKey || `${it.periodo || new Date().getFullYear()}-${it.semestre || 1}`
-    }));
+      // limpieza tipado + compat
+    list = list.map(it => {
+      // Parseamos valores numéricos seguros
+      const certamenes = (it.certamenes || []).map(Number).filter(n => !isNaN(n));
+      const laboratorios = (it.laboratorios || []).map(Number).filter(n => !isNaN(n));
+      const notaExamen = it.notaExamen === '' ? null : Number(it.notaExamen);
+    
+      // Promedio de certámenes (teórico)
+      const promedioCertamenes = certamenes.length > 0
+        ? certamenes.reduce((a, b) => a + b, 0) / certamenes.length
+        : null;
+    
+      // Promedio de laboratorios (práctico)
+      const promedioLaboratorios = laboratorios.length > 0
+        ? laboratorios.reduce((a, b) => a + b, 0) / laboratorios.length
+        : null;
+    
+      // Cálculo del promedio ponderado Teórico (80%) + Práctico (20%)
+      let promedioParcial = null;
+      if (promedioCertamenes !== null) {
+        promedioParcial = promedioCertamenes * 0.8 +
+          (promedioLaboratorios !== null ? promedioLaboratorios * 0.2 : 0);
+      }
+    
+      // Si hay examen, aplica 70% promedio + 30% examen
+      let notaFinalCalculada = promedioParcial;
+      if (notaExamen !== null && promedioParcial !== null) {
+        notaFinalCalculada = promedioParcial * 0.7 + notaExamen * 0.3;
+      }
+    
+      return {
+        codigo: it.codigo,
+        nombre: it.nombre,
+        seccion: it.seccion || 'Teórico',
+        asistencia: String(it.asistencia || '').replace('%', ''),
+        certamenes,
+        laboratorios,
+        notaExamen,
+        notaFinal: it.notaFinal === '' ? notaFinalCalculada : Number(it.notaFinal),
+        estado: it.estado || '',
+        periodo: it.periodo || new Date().getFullYear(),
+        semestre: it.semestre || 1,
+        periodoKey: it.periodoKey || `${it.periodo || new Date().getFullYear()}-${it.semestre || 1}`
+      };
+    });
+    
+        // ====== LIMPIEZA + UNIÓN TEÓRICO/LAB + CÁLCULO ======
+    function normalizeStr(s){ return String(s||'').normalize('NFKC').trim(); }
+    function isLabRow(r){
+      const s = (r.seccion||'') + ' ' + (r.nombre||'');
+      return /lab/i.test(s);
+    }
+    function asNum(x){
+      const n = Number(String(x||'').replace(',','.').trim());
+      return Number.isFinite(n) ? n : null;
+    }
+    function round1(n){ return Math.round(n*10)/10; }
+    function avg(a){
+      const v = a.filter(x=>Number.isFinite(x));
+      return v.length ? v.reduce((p,c)=>p+c,0)/v.length : null;
+    }
+    
+    // Intenta recuperar EXAMEN si no vino crudo, usando "N Ex 40%" ~ exam*0.4
+    function inferExamFromWeighted(nEx40){
+      const n = asNum(nEx40);
+      if (!Number.isFinite(n)) return null;
+      const ex = n/0.4;
+      // valores razonables 1.0..7.0
+      return (ex>=1 && ex<=7.0) ? round1(ex) : null;
+    }
+    
+    function cleanAggregateAndWeight(rawList){
+      // 1) Normaliza registros base
+      const base = (rawList||[]).map(r=>{
+        const codigo = normalizeStr(r.codigo).toUpperCase();
+        const nombre = normalizeStr(r.nombre);
+        const seccion= normalizeStr(r.seccion||'Teórico');
+        const anio   = asNum(r.anio) || asNum(r.periodo) || new Date().getFullYear();
+        const periodo= asNum(r.periodoSem) || asNum(r.periodoN) || asNum(r.periodoTexto) || null; // si no tienes semestre, quedará null
+    
+        // arregla arrays (PP/LAB)
+        const certs = Array.isArray(r.certamenes) ? r.certamenes.map(asNum).filter(Number.isFinite) : [];
+        const labs  = Array.isArray(r.laboratorios) ? r.laboratorios.map(asNum).filter(Number.isFinite) : [];
+    
+        // algunos portales traen "promedios ponderados" (PP Prom 100%, N Pr 70%, N Ex 30%)
+        const ppProm100 = asNum(r.ppProm100 || r.ppProm || r.ppprom);
+        const nPrPct    = asNum(r.nPr60 || r.nPr70 || r.npr);         // (nota presentación ponderada)
+        const nExPct    = asNum(r.nEx40 || r.nEx30 || r.nex);         // (nota examen ponderada)
+        const ex        = asNum(r.notaExamen) ?? inferExamFromWeighted(nExPct);
+    
+        const asistencia= asNum(r.asistencia);
+        const notaFinal = asNum(r.notaFinal);
+        const estadoTxt = normalizeStr(r.estado).toUpperCase();
+    
+        return {
+          codigo, nombre, seccion, anio, periodo,
+          certamenes: certs, laboratorios: labs,
+          ppProm100, nPrPct, nExPct,
+          examen: ex,
+          asistencia,
+          notaFinal,
+          estado: estadoTxt
+        };
+      }).filter(r=>r.codigo);
+    
+      // 2) Une por código: separa teórico/lab y arma un sólo objeto por ramo
+      //    (si hay más de un teórico/lab por código, conserva el "mejor" dato de cada parte)
+      const byCode = new Map();
+      for (const r of base) {
+        if (!byCode.has(r.codigo)) {
+          byCode.set(r.codigo, {
+            codigo: r.codigo,
+            nombre: r.nombre,
+            anio: r.anio,
+            periodo: r.periodo,
+            teorico: { certs: [], ppProm100: null, nPrPct: null, examen: null, final: null },
+            lab:     { labs:  [], labProm: null,                   final: null },
+            asistencia: r.asistencia,
+            finalPortal: r.notaFinal,
+            estadoPortal: r.estado
+          });
+        }
+        const acc = byCode.get(r.codigo);
+        // preferimos mantener el nombre más largo (suele ser el correcto)
+        if ((r.nombre||'').length > (acc.nombre||'').length) acc.nombre = r.nombre;
+        if (r.anio && (!acc.anio || r.anio>acc.anio)) acc.anio = r.anio;
+        if (r.periodo && !acc.periodo) acc.periodo = r.periodo;
+    
+        if (isLabRow(r)) {
+          acc.lab.labs = (acc.lab.labs||[]).concat(r.laboratorios||[]);
+          // si viene "final" del lab (pasa en algunos portales), consérvalo
+          if (Number.isFinite(r.notaFinal)) acc.lab.final = r.notaFinal;
+        } else {
+          acc.teorico.certs = (acc.teorico.certs||[]).concat(r.certamenes||[]);
+          acc.teorico.ppProm100 = acc.teorico.ppProm100 ?? r.ppProm100;
+          acc.teorico.nPrPct    = acc.teorico.nPrPct    ?? r.nPrPct;
+          acc.teorico.examen    = acc.teorico.examen    ?? r.examen;
+          if (Number.isFinite(r.notaFinal)) acc.teorico.final = r.notaFinal;
+        }
+    
+        // asistencia y final portal: conserva valores presentes
+        if (!Number.isFinite(acc.asistencia) && Number.isFinite(r.asistencia)) acc.asistencia = r.asistencia;
+        if (!Number.isFinite(acc.finalPortal) && Number.isFinite(r.notaFinal)) acc.finalPortal = r.notaFinal;
+        if (!acc.estadoPortal && r.estado) acc.estadoPortal = r.estado;
+      }
+    
+      // 3) Calcula promedios y final con tu regla
+      const out = [];
+      for (const [,acc] of byCode) {
+        const ppProm  = avg(acc.teorico.certs||[]);
+        const labProm = avg(acc.lab.labs||[]);
+        const examen  = Number.isFinite(acc.teorico.examen) ? acc.teorico.examen : null;
+    
+        // Pesos por defecto
+        let weights = { teo: 80, lab: 20, examInTeo: 30 };
+        if (!Number.isFinite(labProm) && Number.isFinite(examen)) { weights = { teo:100, lab:0, examInTeo:30 }; }
+        if ( Number.isFinite(labProm) && !Number.isFinite(examen)) { weights = { teo:80,  lab:20, examInTeo:0  }; }
+        if (!Number.isFinite(labProm) && !Number.isFinite(examen)) { weights = { teo:100, lab:0, examInTeo:0  }; }
+    
+        const ppWeight = 100 - weights.examInTeo;   // 70
+        const teoInside = (
+          (Number.isFinite(ppProm)  ? ppProm  : 0) * ppWeight +
+          (Number.isFinite(examen)  ? examen  : 0) * weights.examInTeo
+        ) / 100;
+    
+        const finalCalc = round1(
+          (teoInside * weights.teo + (Number.isFinite(labProm)?labProm:0) * weights.lab) / 100
+        );
+    
+        // estado calculado (si portal trae estado/nota final, lo usamos para confirmar)
+        let estado = 'CURSANDO';
+        if (Number.isFinite(acc.finalPortal)) estado = acc.finalPortal >= 4.0 ? 'APROBADO' : 'REPROBADO';
+        else if (Number.isFinite(finalCalc)) estado = finalCalc >= 4.0 ? 'APROBADO' : 'REPROBADO';
+    
+        out.push({
+          codigo: acc.codigo,
+          nombre: acc.nombre,
+          anio: acc.anio,          // año académico (si lo tienes en el raw)
+          semestre: acc.periodo,   // si lo detectas en el raw; si no, quedará null
+          asistencia: Number.isFinite(acc.asistencia) ? acc.asistencia : null,
+    
+          // notas crudas agregadas
+          pp: (acc.teorico.certs||[]),
+          lab: (acc.lab.labs||[]),
+          examen: Number.isFinite(examen) ? examen : null,
+    
+          // promedios
+          promedioPP: Number.isFinite(ppProm) ? round1(ppProm) : null,
+          promedioLab: Number.isFinite(labProm) ? round1(labProm) : null,
+    
+          // resultado
+          finalCalculado: Number.isFinite(finalCalc) ? finalCalc : null,
+          finalPortal: Number.isFinite(acc.finalPortal) ? acc.finalPortal : null,
+          estadoPortal: acc.estadoPortal || null,
+          estado       : estado,
+    
+          // pesos usados para el cálculo (útil para debug/UI)
+          pesos: weights
+        });
+      }
+    
+      // ordena por año asc y por código
+      out.sort((a,b)=> (a.anio||0)-(b.anio||0) || String(a.codigo).localeCompare(String(b.codigo)));
+      return out;
+    }
 
-    // --- A) notas.json (lista plana) ---
-    const outA = path.join(process.cwd(),'notas.json');
-    fs.writeFileSync(outA, JSON.stringify(list, null, 2), 'utf8');
+
+    
+      const out = cleanAggregateAndWeight(list);
+      fs.writeFileSync(path.join(process.cwd(), 'notas.json'), JSON.stringify(out, null, 2), 'utf8');
+      console.log(`[scraper] OK: notas.json limpio (${out.length} ramos)`);
+      
+      // (opcional) valida diferencias entre finalPortal y finalCalculado
+      const dif = out.filter(x => Number.isFinite(x.finalPortal) && Number.isFinite(x.finalCalculado) && Math.abs(x.finalPortal - x.finalCalculado) > 0.2);
+      if (dif.length) {
+        console.log(`[scraper] Aviso: ${dif.length} ramos con diferencia > 0.2 entre finalPortal y finalCalculado (revisar pesos).`);
+      }
+
 
     // --- B) notas_periodos.json (agrupado por "YYYY-S") ---
     const grouped = {};
