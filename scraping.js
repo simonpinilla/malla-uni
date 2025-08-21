@@ -77,6 +77,9 @@ const avg = (arr) => {
   const v = (arr || []).filter(Number.isFinite);
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
+// Quita diacríticos y pasa a minúsculas (robusto a ISO-8859-1)
+const lowerPlain = (s) =>
+  cleanText(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 
 // ====== login ======
@@ -146,20 +149,78 @@ async function fetchNotasHTML() {
   return res.data;
 }
 
+// ====== parseo tablas ======
 function parseNotasFromTable(html) {
   console.log('[scraper] Parseando…');
   const $ = cheerio.load(html);
 
-  // Tablas que contengan esas frases
-  const candidates = $('table').filter((_, t) => {
-    const txt = lower($(t).text());
-    return txt.includes('código del ramo') && txt.includes('nombre del ramo');
+  // 2.1) Selección de tablas (insensible a acentos)
+  let tables = $('table').filter((_, t) => {
+    const txt = lowerPlain($(t).text());
+    return txt.includes('codigo del ramo') && txt.includes('nombre del ramo');
   });
+
+  // Fallback: si no encontró por cabeceras, intenta por patrón de código de ramo
+  if (tables.length === 0) {
+    const codeRe = /\b[A-Z]{3,5}-\d{3,4}\b/;
+    tables = $('table').filter((_, t) => codeRe.test($(t).text()));
+  }
 
   const rowsOut = [];
 
-  candidates.each((_, table) => {
+  tables.each((_, table) => {
     const $t = $(table);
+
+    // Toma la primera fila "larga" como cabecera
+    const $hdrRow = $t.find('tr').filter((_, tr) => $(tr).find('th,td').length >= 8).first();
+    if (!$hdrRow.length) return;
+
+    // Cabeceras normalizadas (sin acento)
+    const headersRaw   = $hdrRow.find('th,td').map((i, el) => norm($(el).text())).get();
+    const headersPlain = headersRaw.map(lowerPlain);
+    console.log('[scraper] Cabeceras detectadas:', headersPlain.join(' | '));
+
+
+    // Índices robustos a variaciones (anio/año, etc.)
+    const idx = (needle) => headersPlain.findIndex(h => h.includes(needle));
+    const idxs = {
+      codigo: idx('codigo del ramo'),
+      nombre: idx('nombre del ramo'),
+      seccion: idx('seccion'),
+      periodo: idx('periodo'),
+      anio: (() => {
+        const i1 = idx('año');             // por si viene con ñ sin normalizar
+        const i2 = idx('anio');
+        return i1 >= 0 ? i1 : i2;
+      })(),
+      asistencia: (() => {
+        // columnas tipo "Asist 75%" o "Asistencia"
+        const i = headersPlain.findIndex(h => h.startsWith('asist'));
+        return i >= 0 ? i : idx('asistencia');
+      })()
+    };
+
+    // Localiza columnas de PP / LAB / promedios / examen / final / estado
+    const findCol = (...needles) => headersPlain.findIndex(h => needles.some(n => h.includes(n)));
+
+    const colPP  = [
+      findCol('pp 1','pp1'), findCol('pp 2','pp2'),
+      findCol('pp 3','pp3'), findCol('pp 4','pp4')
+    ].filter(i => i >= 0);
+
+    const colLAB = [
+      findCol('lab 1','lab1'), findCol('lab 2','lab2'),
+      findCol('lab 3','lab3'), findCol('lab 4','lab4')
+    ].filter(i => i >= 0);
+
+    const colPPProm = findCol('pp prom', 'pp prom 100%');
+    const colLABProm = findCol('lab prom', 'lab prom 100%');
+    const colNExPct  = findCol('n ex 40', 'n ex 30', 'n ex 40%', 'n ex 30%', 'n pr 70%', 'n pr 60%', 'n pr 30%');
+    const colExamen  = findCol('examen'); // si existe explícito
+    const colFinal   = findCol('final');
+    const colEstado  = findCol('estado');
+
+    // … (el resto de tu loop que lee celdas y arma rowsOut se mantiene)
 
     // Fila cabecera preferentemente con <th>. Si no hay, busca un <tr> que contenga "código del ramo"
     let $hdrRow = $t.find('tr').filter((_, tr) => $(tr).find('th').length >= 3).first();
