@@ -37,17 +37,47 @@ const http = wrapper(axios.create({
 
 // ====== helpers ======
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const norm = s => String(s || '').normalize('NFKC').trim();
-const lower = s => norm(s).toLowerCase();
-const asNum = (x) => {
-  const n = Number(String(x ?? '').replace(',', '.').trim());
+
+function cleanText(s) {
+  return String(s || '')
+    .replace(/\u00A0/g, ' ')     // NBSP
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+const norm  = (s) => cleanText(s);
+const lower = (s) => cleanText(s).toLowerCase();
+
+// Parse genérico (conserva 0)
+function asNumStrict(x) {
+  const t = cleanText(x);
+  if (!t || t === '-') return null;
+  const n = Number(t.replace(',', '.'));
   return Number.isFinite(n) ? n : null;
-};
+}
+
+// Parse para NOTAS: '', '-', '0', '0.0', '0,0' => null (0 es “vacío”)
+function asGrade(x) {
+  const t = cleanText(x).toLowerCase();
+  if (!t || t === '-' || t === 'nan') return null;
+  if (t === '0' || t === '0.0' || t === '0,0') return null;
+  const n = Number(t.replace(',', '.'));
+  return Number.isFinite(n) ? n : null;
+}
+
+// Entero opcional (para año/semestre)
+function asIntOrNull(x) {
+  const t = cleanText(x);
+  if (!t || t === '-') return null;
+  const n = parseInt(t, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 const round1 = n => Math.round(n * 10) / 10;
-const avg = arr => {
+const avg = (arr) => {
   const v = (arr || []).filter(Number.isFinite);
   return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
 };
+
 
 // ====== login ======
 async function login() {
@@ -116,94 +146,106 @@ async function fetchNotasHTML() {
   return res.data;
 }
 
-// ====== parseo tablas ======
 function parseNotasFromTable(html) {
   console.log('[scraper] Parseando…');
   const $ = cheerio.load(html);
 
-  // Selecciona tablas candidatas: busco cabeceras “Código del Ramo” y “Nombre del Ramo”
-  const tables = $('table').filter((_, t) => {
+  // Tablas que contengan esas frases
+  const candidates = $('table').filter((_, t) => {
     const txt = lower($(t).text());
     return txt.includes('código del ramo') && txt.includes('nombre del ramo');
   });
 
   const rowsOut = [];
 
-  tables.each((_, table) => {
+  candidates.each((_, table) => {
     const $t = $(table);
-    // Encuentra la fila de cabeceras (la primera que tenga muchos TH/TD)
-    const $hdrRow = $t.find('tr').filter((_, tr) => $(tr).find('th,td').length >= 10).first();
+
+    // Fila cabecera preferentemente con <th>. Si no hay, busca un <tr> que contenga "código del ramo"
+    let $hdrRow = $t.find('tr').filter((_, tr) => $(tr).find('th').length >= 3).first();
+    if (!$hdrRow.length) {
+      $hdrRow = $t.find('tr').filter((_, tr) => lower($(tr).text()).includes('código del ramo')).first();
+    }
     if (!$hdrRow.length) return;
 
     const headers = $hdrRow.find('th,td').map((i, el) => lower($(el).text())).get();
+    const idxOf = (needle) => headers.findIndex(h => h.includes(needle));
 
-    // índices útiles
-    const idx = (needle) => headers.findIndex(h => h.includes(needle));
     const idxs = {
-      codigo: idx('código del ramo'),
-      nombre: idx('nombre del ramo'),
-      seccion: idx('sección'),
-      periodo: idx('periodo'),  // a veces dice "Periodo"
-      anio: idx('año'),
-      asistencia: idx('asist')
+      codigo  : idxOf('código del ramo'),
+      nombre  : idxOf('nombre del ramo'),
+      seccion : idxOf('sección'),
+      periodo : idxOf('periodo'),
+      anio    : idxOf('año'),
+      asist   : headers.findIndex(h => /^asist/.test(h))   // "Asist 75%" o similar
     };
 
-    // detecta columnas PP 1..4 / LAB 1..4 / PP Prom / LAB Prom / N Ex 40%/30% / Final / Estado
     const findCol = (...needles) => headers.findIndex(h => needles.some(n => h.includes(n)));
 
     const colPP = [
       findCol('pp 1', 'pp1'),
       findCol('pp 2', 'pp2'),
       findCol('pp 3', 'pp3'),
-      findCol('pp 4', 'pp4')
+      findCol('pp 4', 'pp4'),
     ].filter(i => i >= 0);
 
     const colLAB = [
       findCol('lab 1', 'lab1'),
       findCol('lab 2', 'lab2'),
       findCol('lab 3', 'lab3'),
-      findCol('lab 4', 'lab4')
+      findCol('lab 4', 'lab4'),
     ].filter(i => i >= 0);
 
-    const colPPProm = findCol('pp prom', 'pp prom 100%');
-    const colLABProm = findCol('lab prom', 'lab prom 100%');
-    const colNExPct  = findCol('n ex 40', 'n ex 30', 'n ex 40%', 'n ex 30%'); // ponderado
-    const colExamen  = findCol('examen');   // si aparece explícito
+    const colPPProm = findCol('pp prom');
+    const colLABProm = findCol('lab prom');
+    const colNExPct  = findCol('n ex 40', 'n ex 30', 'n ex 40%', 'n ex 30%');
+    const colExamen  = findCol('examen');   // si existe
     const colFinal   = findCol('final');
     const colEstado  = findCol('estado');
 
-    // Recorre filas de datos (después de la cabecera)
+    // Recorre filas de datos reales
     $hdrRow.nextAll('tr').each((__, tr) => {
-      const tds = $(tr).find('td');
-      if (!tds.length) return;
+      const $tds = $(tr).find('td');
+      if (!$tds.length) return;
 
-      const cells = tds.map((i, el) => norm($(el).text())).get();
+      const cells = $tds.map((i, el) => norm($(el).text())).get();
       const get = (i) => (i >= 0 && i < cells.length) ? cells[i] : '';
 
-      // Filtros básicos
-      const codigo = get(idxs.codigo);
-      const nombre = get(idxs.nombre);
-      if (!codigo || !nombre) return;
+      const codigoTxt = get(idxs.codigo);
+      const nombreTxt = get(idxs.nombre);
+
+      // Filtra filas vacías o de separación
+      if (!codigoTxt || !nombreTxt) return;
+      const codigo = cleanText(codigoTxt).toUpperCase();
+      const nombre = cleanText(nombreTxt);
+      if (codigo.includes('CÓDIGO DEL RAMO')) return; // seguridad extra
 
       const seccion = get(idxs.seccion) || '3 - Teórico';
-      const periodo = asNum(get(idxs.periodo)); // 1/2
-      const anio    = asNum(get(idxs.anio));
-      const asistencia = asNum(get(idxs.asistencia));
+      const periodo = asIntOrNull(get(idxs.periodo)); // 1/2
+      const anio    = asIntOrNull(get(idxs.anio));
+      const asistencia = asIntOrNull(get(idxs.asist));
 
       const certs = [];
-      if (colPP.length) colPP.forEach(i => { const v = asNum(get(i)); if (Number.isFinite(v)) certs.push(v); });
+      colPP.forEach(i => { const v = asGrade(get(i)); if (v != null) certs.push(v); });
+
       const labs = [];
-      if (colLAB.length) colLAB.forEach(i => { const v = asNum(get(i)); if (Number.isFinite(v)) labs.push(v); });
+      colLAB.forEach(i => { const v = asGrade(get(i)); if (v != null) labs.push(v); });
 
-      const ppProm100  = asNum(get(colPPProm));
-      const labProm100 = asNum(get(colLABProm));
-      const nExPct     = asNum(get(colNExPct));
-      const examen     = asNum(get(colExamen));
-      const final      = asNum(get(colFinal));
-      const estado     = norm(get(colEstado)).toUpperCase();
+      const ppProm100  = asGrade(get(colPPProm));
+      const labProm100 = asGrade(get(colLABProm));
+      const nExPct     = asGrade(get(colNExPct));   // esto ya viene ponderado (0.0 => null)
+      const examenRaw  = asGrade(get(colExamen));   // si hay columna explícita
+      const final      = asGrade(get(colFinal));
 
-      const row = {
-        codigo: codigo.toUpperCase(),
+      // Estado: sólo si la columna existe y no luce como “código”/basura
+      let estado = '';
+      if (colEstado >= 0) {
+        const e = cleanText(get(colEstado));
+        if (e && !/^[A-Z]{3,4}-\d{3,4}$/i.test(e)) estado = e.toUpperCase(); // evita capturar FCSA-2202
+      }
+
+      rowsOut.push({
+        codigo,
         nombre,
         seccion,
         periodo,
@@ -214,20 +256,23 @@ function parseNotasFromTable(html) {
         ppProm100,
         labProm100,
         nExPct,
-        notaExamen: examen,
+        notaExamen: examenRaw, // si es null, luego inferimos desde nExPct (n/0.4)
         notaFinal: final,
         estado
-      };
-
-      rowsOut.push(row);
+      });
     });
   });
 
-  // Si nada, guardo HTML para revisar
-  if (!rowsOut.length) {
-    console.log('[scraper] No se encontró ninguna tabla candidata.');
-  }
-  return rowsOut;
+  // Si la tabla trae “0.0” por todos lados (fila basura), la descartamos aquí
+  return rowsOut.filter(r =>
+    r.codigo && r.nombre &&
+    (
+      (r.certamenes && r.certamenes.length) ||
+      (r.laboratorios && r.laboratorios.length) ||
+      r.ppProm100 != null || r.labProm100 != null || r.nExPct != null ||
+      r.notaExamen != null || r.notaFinal != null
+    )
+  );
 }
 
 // ====== fns de normalización/union/pesos ======
@@ -392,10 +437,18 @@ async function run() {
     if (dif.length) {
       console.log(`[scraper] Aviso: ${dif.length} ramos con diferencia > 0.2 entre finalPortal y finalCalculado (revisar pesos).`);
     }
-
     // --- B) notas_periodos.json (agrupado por "YYYY-S") ---
+    const grouped = {};
+    for (const it of out) {
+      const y = it.anio || new Date().getFullYear();
+      const s = it.semestre || 1;
+      const k = `${y}-${s}`;
+      (grouped[k] ||= []).push(it);
+    }
     const outB = path.join(process.cwd(), 'notas_periodos.json');
     fs.writeFileSync(outB, JSON.stringify(grouped, null, 2), 'utf8');
+
+
 
     // logs de tamaños correctos
     const bytesA = fs.statSync(outA).size;
