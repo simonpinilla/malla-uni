@@ -141,19 +141,50 @@ async function login() {
 }
 
 // ====== descarga html ======
+// ====== descarga html (con soporte de frames/iframes) ======
 async function fetchNotasHTML() {
   console.log('[scraper] Descargando página de notas…');
   console.log('[scraper] GET notas:', NOTAS_URL);
   const res = await http.get(NOTAS_URL);
   console.log('[scraper] GET notas status:', res.status);
-  return res.data;
+  let html = String(res.data || '');
+
+  // ¿Es un frameset? busca frames/iframes y sigue el src correcto
+  if (/\<(frameset|frame|iframe)\b/i.test(html)) {
+    const $ = cheerio.load(html);
+    const frameSrcs = [];
+    $('frame, iframe').each((_, el) => {
+      const src = $(el).attr('src');
+      if (src) frameSrcs.push(new URL(src, NOTAS_URL).toString());
+    });
+
+    // Prioriza candidatos que parezcan "concentración" o que contengan códigos de ramo
+    for (const src of frameSrcs) {
+      try {
+        const r2 = await http.get(src);
+        const body = String(r2.data || '');
+        const plain = body.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+        const hasCab = plain.includes('codigo del ramo') && plain.includes('nombre del ramo');
+        const hasCodes = /\b[A-Z]{3,5}-\d{3,4}\b/.test(body);
+        if (hasCab || hasCodes) {
+          console.log('[scraper] Frame con tabla detectado:', src, 'status:', r2.status);
+          html = body;
+          break;
+        }
+      } catch (e) {
+        // continúa con los demás frames
+      }
+    }
+  }
+
+  return html;
 }
 
 function parseNotasFromTable(html) {
   console.log('[scraper] Parseando…');
   const $ = cheerio.load(html);
 
-  // --- utilidades locales ---
+  // helpers locales (robustos a ISO-8859-1)
   const cleanText = (s) => String(s || '').replace(/\u00A0/g, ' ').replace(/\s+/g, ' ').trim();
   const norm      = (s) => cleanText(s);
   const lower     = (s) => cleanText(s).toLowerCase();
@@ -166,13 +197,13 @@ function parseNotasFromTable(html) {
     return Number.isFinite(n) ? n : null;
   };
 
-  // 1) tablas candidatas por cabecera
+  // 1) Tablas candidatas: por cabecera
   let tables = $('table').filter((_, t) => {
     const txt = lowerPlain($(t).text());
     return txt.includes('codigo del ramo') && txt.includes('nombre del ramo');
   });
 
-  // 1b) fallback por patrón de código (si no encontró por cabecera)
+  // Fallback: por patrón de código de ramo
   if (tables.length === 0) {
     const codeRe = /\b[A-Z]{3,5}-\d{3,4}\b/;
     tables = $('table').filter((_, t) => codeRe.test($(t).text()));
@@ -180,18 +211,26 @@ function parseNotasFromTable(html) {
 
   const rowsOut = [];
 
+  // Log de cuántas tablas vimos
+  console.log(`[scraper] Tablas candidatas: ${tables.length}`);
+
   tables.each((_, table) => {
     const $t = $(table);
 
-    // Fila cabecera: preferimos una con muchos th/td
+    // Cabecera probable: primera fila "larga"
     let $hdrRow = $t.find('tr').filter((_, tr) => $(tr).find('th,td').length >= 8).first();
     if (!$hdrRow.length) {
-      $hdrRow = $t.find('tr').filter((_, tr) => lower($(tr).text()).includes('código del ramo') || lowerPlain($(tr).text()).includes('codigo del ramo')).first();
+      $hdrRow = $t.find('tr').filter((_, tr) => {
+        const txt = lower($(tr).text());
+        const plain = lowerPlain($(tr).text());
+        return txt.includes('código del ramo') || plain.includes('codigo del ramo');
+      }).first();
     }
     if (!$hdrRow.length) return;
 
     const headersRaw   = $hdrRow.find('th,td').map((i, el) => norm($(el).text())).get();
     const headersPlain = headersRaw.map(lowerPlain);
+    console.log('[scraper] Cabeceras detectadas:', headersPlain.join(' | '));
 
     const idx   = (needle) => headersPlain.findIndex(h => h.includes(needle));
     const findC = (...needles) => headersPlain.findIndex(h => needles.some(n => h.includes(n)));
@@ -204,7 +243,6 @@ function parseNotasFromTable(html) {
       anio   : (idx('año') >= 0 ? idx('año') : idx('anio')),
       asist  : (() => { const i = headersPlain.findIndex(h => h.startsWith('asist')); return i >= 0 ? i : idx('asistencia'); })(),
 
-      // PP y LAB por columnas sueltas
       pp1: findC('pp 1','pp1'), pp2: findC('pp 2','pp2'), pp3: findC('pp 3','pp3'), pp4: findC('pp 4','pp4'),
       lb1: findC('lab 1','lab1'), lb2: findC('lab 2','lab2'), lb3: findC('lab 3','lab3'), lb4: findC('lab 4','lab4'),
 
@@ -231,14 +269,15 @@ function parseNotasFromTable(html) {
       const nombreTxt = get(col.nombre);
       if (!codigoTxt || !nombreTxt) return;
 
-      const codigo = cleanText(codigoTxt).toUpperCase();
-      const nombre = cleanText(nombreTxt);
-      if (!/\b[A-Z]{3,5}-\d{3,4}\b/.test(codigo)) return; // filas separadoras
+      const codigo = norm(codigoTxt).toUpperCase();
+      // Filas separadoras/ruido
+      if (!/\b[A-Z]{3,5}-\d{3,4}\b/.test(codigo)) return;
 
-      const seccion    = get(col.seccion) || '3 - Teórico';
-      const periodo    = asInt(get(col.periodo));
-      const anio       = asInt(get(col.anio));
-      const asistencia = asInt(get(col.asist));
+      const nombre    = norm(nombreTxt);
+      const seccion   = get(col.seccion) || '3 - Teórico';
+      const periodo   = asInt(get(col.periodo));
+      const anio      = asInt(get(col.anio));
+      const asistencia= asInt(get(col.asist));
 
       const certs = [];
       ppCols.forEach(i => { const v = asGrade(get(i)); if (v != null) certs.push(v); });
@@ -254,12 +293,10 @@ function parseNotasFromTable(html) {
 
       let estado = '';
       if (col.estado >= 0) {
-        const e = cleanText(get(col.estado));
-        // evita casos donde la “celda de estado” trae el mismo código (p.ej. FCSA-2202)
+        const e = norm(get(col.estado));
         if (e && !/^[A-Z]{3,5}-\d{3,4}$/.test(e)) estado = e.toUpperCase();
       }
 
-      // descarta filas total/basura sin datos reales
       const tieneNotas = (certs.length + labs.length) > 0 || ppProm100 != null || labProm100 != null || nExPct != null || examen != null || final != null;
       if (!tieneNotas) return;
 
@@ -276,9 +313,48 @@ function parseNotasFromTable(html) {
     });
   });
 
+  // 2) Fallback texto plano (sin tablas): busca bloques con "CODIGO - NOMBRE" + año/semestre más cerca
   if (!rowsOut.length) {
+    const plain = $('body').text() || html;
+    const lines = String(plain).split(/\r?\n/).map(s => cleanText(s)).filter(Boolean);
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/\b([A-Z]{3,5}-\d{3,4})\b\s+(.+?)$/);
+      if (!m) continue;
+      const codigo = m[1].toUpperCase();
+      const nombre = cleanText(m[2]);
+
+      // busca año y (si existe) semestre en un radio de 5 líneas
+      let anio = null, periodo = null;
+      for (let j = i; j < Math.min(i + 6, lines.length); j++) {
+        const Y = lines[j].match(/\b(20\d{2})\b/);
+        if (Y && !anio) anio = parseInt(Y[1], 10);
+        const S = lines[j].match(/\b(?:semestre|periodo)\s*(\d)\b/i);
+        if (S && !periodo) periodo = parseInt(S[1], 10);
+        if (anio && periodo) break;
+      }
+
+      out.push({
+        codigo, nombre,
+        seccion: /lab/i.test(nombre) ? '31 - Laboratorio' : '3 - Teórico',
+        periodo, anio,
+        asistencia: null,
+        certamenes: [],
+        laboratorios: [],
+        ppProm100: null, labProm100: null,
+        nExPct: null, notaExamen: null, notaFinal: null,
+        estado: ''
+      });
+    }
+
+    if (out.length) {
+      console.log(`[scraper] Fallback texto: ${out.length} ramos encontrados`);
+      return out;
+    }
+
     console.log('[scraper] No se encontraron tablas con filas de ramos.');
   }
+
   return rowsOut;
 }
 
