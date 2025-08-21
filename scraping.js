@@ -394,22 +394,14 @@ async function run() {
     }
 
     // --- B) notas_periodos.json (agrupado por "YYYY-S") ---
-    const grouped = {};
-    for (const it of out) {
-      const y = it.anio || new Date().getFullYear();
-      const s = it.semestre || 1;
-      const k = `${y}-${s}`;
-      (grouped[k] ||= []).push(it);
-    }
     const outB = path.join(process.cwd(), 'notas_periodos.json');
-    fs.writeFileSync(outB,fs.writeFileSync(outB, JSON.stringify(grouped, null, 2), 'utf8');
+    fs.writeFileSync(outB, JSON.stringify(grouped, null, 2), 'utf8');
 
     // logs de tamaños correctos
     const bytesA = fs.statSync(outA).size;
     const bytesB = fs.statSync(outB).size;
     console.log(`[scraper] OK: notas.json (${out.length} ramos, ${bytesA} bytes)`);
     console.log(`[scraper] OK: notas_periodos.json (${Object.keys(grouped).length} periodos, ${bytesB} bytes)`);
-
   } catch (err) {
     console.error('[scraper] ERROR:', err && err.stack || err);
     process.exit(1);
@@ -417,3 +409,4 @@ async function run() {
 }
 
 run();
+
